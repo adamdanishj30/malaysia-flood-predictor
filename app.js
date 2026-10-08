@@ -37,6 +37,16 @@ let waterHeatLayer = null;
 let historicalHeatLayer = null;
 let isHistHeatmapVisible = false;
 
+// Atmosphere: RainViewer Radar & Satellite Clouds for Map View
+let radarFramesApp = [];
+let radarTileLayersApp = [];
+let radarCurrentIndexApp = 0;
+let radarIntervalApp = null;
+let isRadarPlayingApp = false;
+let isRadarVisibleApp = false;
+let satelliteCloudLayerApp = null;
+let isCloudVisibleApp = false;
+
 // Embedded high-accuracy fallback hotspots across Malaysia
 const FALLBACK_HOTSPOTS = [
   { id: "my-sgr-01", name: "Taman Sri Muda, Shah Alam", district: "Petaling", state: "Selangor", basin: "Sungai Klang Basin", lat: 3.0234, lon: 101.5381, elevation_m: 8, flood_type: "Urban Flash & River Basin Overflow", historical_risk_score: 92, critical_rain_1h_mm: 40, critical_rain_24h_mm: 90, notes: "Low-lying retention basin, severe historical flooding in Dec 2021." },
@@ -665,6 +675,163 @@ function setupEventListeners() {
         }
       }
     });
+  }
+
+  // Atmosphere: Live Rain Radar & Cloud Controls
+  const btnRadar = document.getElementById('btnToggleRadarApp');
+  const btnCloud = document.getElementById('btnToggleCloudApp');
+  const btnPlay = document.getElementById('btnRadarPlayApp');
+  const btnPrev = document.getElementById('btnRadarPrevApp');
+  const btnNext = document.getElementById('btnRadarNextApp');
+
+  if (btnRadar) btnRadar.addEventListener('click', () => toggleRadarVisibilityApp());
+  if (btnCloud) btnCloud.addEventListener('click', () => toggleSatelliteCloudsApp());
+  if (btnPlay) btnPlay.addEventListener('click', () => toggleRadarPlayApp());
+  if (btnPrev) btnPrev.addEventListener('click', () => stepRadarApp(-1));
+  if (btnNext) btnNext.addEventListener('click', () => stepRadarApp(1));
+}
+
+// RainViewer Doppler Radar Engine for Map View
+async function loadRainRadarApp() {
+  try {
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await res.json();
+    if (!data.radar || !data.radar.past || data.radar.past.length === 0) return;
+
+    radarTileLayersApp.forEach(l => {
+      if (map && map.hasLayer(l)) map.removeLayer(l);
+    });
+    radarTileLayersApp = [];
+
+    radarFramesApp = data.radar.past;
+    const host = data.host || 'https://tilecache.rainviewer.com';
+
+    radarTileLayersApp = radarFramesApp.map((frame, idx) => {
+      const layer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+        tileSize: 256,
+        opacity: 0,
+        zIndex: 450 + idx,
+        attribution: 'RainViewer'
+      });
+      if (isRadarVisibleApp && map) layer.addTo(map);
+      return layer;
+    });
+
+    radarCurrentIndexApp = radarFramesApp.length - 1;
+    updateRadarDisplayApp();
+  } catch (err) {
+    console.warn("Could not load RainViewer radar in app.js:", err);
+  }
+}
+
+function updateRadarDisplayApp() {
+  if (!radarFramesApp.length || !radarTileLayersApp.length) return;
+
+  radarTileLayersApp.forEach((l, i) => {
+    l.setOpacity(i === radarCurrentIndexApp ? 0.78 : 0);
+  });
+
+  const frame = radarFramesApp[radarCurrentIndexApp];
+  const date = new Date(frame.time * 1000);
+  const timeStr = date.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const isLatest = radarCurrentIndexApp === radarFramesApp.length - 1;
+
+  const timeElem = document.getElementById('radarTimeLabelApp');
+  if (timeElem) timeElem.textContent = timeStr;
+
+  const badgeElem = document.getElementById('radarStatusTagApp');
+  if (badgeElem) {
+    if (isLatest) {
+      badgeElem.className = 'text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+      badgeElem.textContent = 'LIVE';
+    } else {
+      const minsAgo = Math.max(1, Math.round((Date.now() - frame.time * 1000) / 60000));
+      badgeElem.className = 'text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700';
+      badgeElem.textContent = `-${minsAgo}m`;
+    }
+  }
+}
+
+function toggleRadarPlayApp() {
+  if (!isRadarVisibleApp) toggleRadarVisibilityApp(true);
+
+  const icon = document.getElementById('radarPlayIconApp');
+  if (isRadarPlayingApp) {
+    clearInterval(radarIntervalApp);
+    radarIntervalApp = null;
+    isRadarPlayingApp = false;
+    if (icon) icon.className = 'fa-solid fa-play';
+  } else {
+    isRadarPlayingApp = true;
+    if (icon) icon.className = 'fa-solid fa-pause';
+    radarIntervalApp = setInterval(() => {
+      if (!radarFramesApp.length) return;
+      radarCurrentIndexApp = (radarCurrentIndexApp + 1) % radarFramesApp.length;
+      updateRadarDisplayApp();
+    }, 700);
+  }
+}
+
+function stepRadarApp(dir) {
+  if (isRadarPlayingApp) toggleRadarPlayApp();
+  if (!radarFramesApp.length) return;
+  radarCurrentIndexApp = (radarCurrentIndexApp + dir + radarFramesApp.length) % radarFramesApp.length;
+  updateRadarDisplayApp();
+}
+
+function toggleRadarVisibilityApp(forceState) {
+  isRadarVisibleApp = forceState !== undefined ? forceState : !isRadarVisibleApp;
+  const btn = document.getElementById('btnToggleRadarApp');
+  const bar = document.getElementById('radarPlayerBarApp');
+
+  if (isRadarVisibleApp) {
+    if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-cyan-600 text-white font-semibold text-[11px] transition flex items-center gap-1 shadow-md shadow-cyan-500/20';
+    if (bar) bar.classList.remove('hidden');
+
+    if (radarTileLayersApp.length === 0) {
+      loadRainRadarApp().then(() => {
+        if (!isRadarPlayingApp) toggleRadarPlayApp();
+      });
+    } else {
+      radarTileLayersApp.forEach(l => {
+        if (map && !map.hasLayer(l)) l.addTo(map);
+      });
+      updateRadarDisplayApp();
+      if (!isRadarPlayingApp) toggleRadarPlayApp();
+    }
+  } else {
+    if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium text-[11px] transition flex items-center gap-1';
+    if (bar) bar.classList.add('hidden');
+    if (isRadarPlayingApp) toggleRadarPlayApp();
+    radarTileLayersApp.forEach(l => {
+      if (map && map.hasLayer(l)) map.removeLayer(l);
+    });
+  }
+}
+
+function toggleSatelliteCloudsApp() {
+  isCloudVisibleApp = !isCloudVisibleApp;
+  const btn = document.getElementById('btnToggleCloudApp');
+
+  if (isCloudVisibleApp) {
+    if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-sky-600 text-white font-semibold text-[11px] transition flex items-center gap-1 shadow-md shadow-sky-500/20';
+    if (!satelliteCloudLayerApp) {
+      const today = new Date().toISOString().split('T')[0];
+      satelliteCloudLayerApp = L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${today}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
+        maxZoom: 9,
+        opacity: 0.65,
+        zIndex: 350,
+        attribution: 'NASA GIBS'
+      });
+    }
+    if (map && !map.hasLayer(satelliteCloudLayerApp)) {
+      satelliteCloudLayerApp.addTo(map);
+    }
+  } else {
+    if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium text-[11px] transition flex items-center gap-1';
+    if (satelliteCloudLayerApp && map && map.hasLayer(satelliteCloudLayerApp)) {
+      map.removeLayer(satelliteCloudLayerApp);
+    }
   }
 }
 

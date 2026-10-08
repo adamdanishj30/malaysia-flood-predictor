@@ -185,16 +185,39 @@
           </div>
         </div>
 
-        <!-- Floating Map Style Switcher -->
-        <div class="absolute top-4 right-4 z-[400] bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700/80 shadow-xl flex items-center gap-1.5 text-xs">
+        <!-- Floating Map Style & Atmosphere Switcher -->
+        <div class="absolute top-4 right-4 z-[400] bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700/80 shadow-xl flex items-center gap-1.5 text-xs flex-wrap">
           <button id="btnLayerDark" class="px-2 py-1 rounded-lg bg-blue-600 text-white font-medium text-[11px]">Dark</button>
           <button id="btnLayerSat" class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium text-[11px]">Satellite</button>
           <button id="btnLayerStreet" class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium text-[11px]">Street</button>
           <div class="w-px h-4 bg-slate-700 mx-0.5"></div>
           <button id="btnToggleHistHeatmap" class="px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600 text-red-200 hover:text-white border border-red-500/40 font-semibold text-[11px] transition flex items-center gap-1">
             <i class="fa-solid fa-fire-flame-curved text-amber-400 text-xs"></i>
-            <span>Historical Heatmap</span>
+            <span>Historical</span>
           </button>
+          <button id="btnToggleRadarApp" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium text-[11px] transition flex items-center gap-1">
+            <i class="fa-solid fa-cloud-bolt text-cyan-400 text-xs"></i>
+            <span>Live Radar</span>
+          </button>
+          <button id="btnToggleCloudApp" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-medium text-[11px] transition flex items-center gap-1">
+            <i class="fa-solid fa-cloud text-sky-400 text-xs"></i>
+            <span>Clouds</span>
+          </button>
+        </div>
+
+        <!-- Floating Radar Player Bar (Active when radar toggled) -->
+        <div id="radarPlayerBarApp" class="hidden absolute top-16 right-4 z-[400] bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-cyan-500/40 shadow-2xl flex items-center gap-2 text-xs">
+          <button id="btnRadarPlayApp" class="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white text-[10px] transition" title="Play / Pause Radar Loop">
+            <i id="radarPlayIconApp" class="fa-solid fa-play"></i>
+          </button>
+          <button id="btnRadarPrevApp" class="text-slate-400 hover:text-white text-xs px-1" title="Previous 10m Frame">
+            <i class="fa-solid fa-backward-step"></i>
+          </button>
+          <span id="radarTimeLabelApp" class="text-[11px] font-mono text-cyan-300 font-bold min-w-[65px] text-center">--:--</span>
+          <button id="btnRadarNextApp" class="text-slate-400 hover:text-white text-xs px-1" title="Next 10m Frame">
+            <i class="fa-solid fa-forward-step"></i>
+          </button>
+          <span id="radarStatusTagApp" class="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">LIVE</span>
         </div>
 
       </div>
