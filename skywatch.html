@@ -673,6 +673,45 @@
         const lon = e.latlng.lng;
         reverseGeocodeAndFetch(lat, lon);
       });
+
+      // Dynamically scale heatmap radius when user zooms in to ensure physical basin accuracy
+      mapInstance.on('zoomend', () => {
+        adaptHeatmapToZoom();
+      });
+    }
+
+    // Adapt heatmap radius and blur to map zoom level
+    // Fixes the issue where high zoom causes tiny pixel circles instead of realistic catchment zones
+    function adaptHeatmapToZoom() {
+      if (!mapInstance) return;
+      const z = mapInstance.getZoom();
+
+      // At country level (z <= 7): 18-20px
+      // At district level (z 8-11): 28-50px
+      // At street/suburb level (z >= 13): 90-180px with broad blur spreading across low-lying flood corridors
+      let r = 24;
+      let b = 18;
+      if (z <= 7) {
+        r = 18; b = 14;
+      } else if (z <= 9) {
+        r = 28; b = 20;
+      } else if (z <= 11) {
+        r = 48; b = 34;
+      } else if (z <= 13) {
+        r = 80; b = 55;
+      } else if (z >= 14) {
+        // High zoom street level (e.g. Federal Highway, Sg Rasau, Klang)
+        r = Math.min(115 + (z - 14) * 45, 210);
+        b = Math.min(80 + (z - 14) * 30, 150);
+      }
+
+      if (historicalHeatLayer && typeof historicalHeatLayer.setOptions === "function") {
+        historicalHeatLayer.setOptions({ radius: r, blur: b });
+      }
+
+      if (waterHeatLayer && typeof waterHeatLayer.setOptions === "function") {
+        waterHeatLayer.setOptions({ radius: Math.round(r * 1.15), blur: Math.round(b * 1.1) });
+      }
     }
 
     // 3. Fetch Live Telemetry from Open-Meteo & GloFAS
@@ -1119,6 +1158,7 @@
         });
       }
 
+      adaptHeatmapToZoom();
       syncHeatmapLayers();
     }
 
@@ -1167,6 +1207,8 @@
           minOpacity: 0.35,
           gradient: HISTORICAL_GRADIENT
         });
+
+        adaptHeatmapToZoom();
 
         // Add interactive hotspot markers with past flood statistics
         if (historicalDataCache?.hotspots) {

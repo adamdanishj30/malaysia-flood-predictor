@@ -78,6 +78,33 @@ function initMap() {
     const lon = e.latlng.lng;
     handleMapClick(lat, lon);
   });
+
+  // Scale heatmap radius dynamically on zoom
+  map.on('zoomend', () => {
+    adaptHeatmapToZoomApp();
+  });
+}
+
+function adaptHeatmapToZoomApp() {
+  if (!map) return;
+  const z = map.getZoom();
+  let r = 24;
+  let b = 18;
+  if (z <= 7) { r = 18; b = 14; }
+  else if (z <= 9) { r = 28; b = 20; }
+  else if (z <= 11) { r = 48; b = 34; }
+  else if (z <= 13) { r = 80; b = 55; }
+  else if (z >= 14) {
+    r = Math.min(115 + (z - 14) * 45, 210);
+    b = Math.min(80 + (z - 14) * 30, 150);
+  }
+
+  if (historicalHeatLayer && typeof historicalHeatLayer.setOptions === "function") {
+    historicalHeatLayer.setOptions({ radius: r, blur: b });
+  }
+  if (waterHeatLayer && typeof waterHeatLayer.setOptions === "function") {
+    waterHeatLayer.setOptions({ radius: Math.round(r * 1.15), blur: Math.round(b * 1.1) });
+  }
 }
 
 // 2. Load and Plot Malaysian Flood Hotspots
