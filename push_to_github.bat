@@ -1,15 +1,14 @@
 @echo off
 title Push to GitHub - Malaysia Flood Predictor
 echo ========================================================
-echo   Pushing your files to GitHub...
+echo   Updating GitHub repository to your profile...
+echo   Author: adamdanishj30
 echo ========================================================
 echo.
-echo A browser window may open asking you to sign in to GitHub.
-echo Just click "Sign in with your browser" to authorize.
-echo.
-git push -u origin main
+git push -u origin main --force
 echo.
 echo ========================================================
-echo If completed, refresh your GitHub repository page!
+echo Done! Refresh your GitHub repository page.
+echo The other person's profile is now replaced with yours!
 echo ========================================================
 pause
