@@ -13,6 +13,35 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Leaflet Heatmap Plugin for Blue Water Inundation -->
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script>
+    // Monkey-patch Vladimir Agafonkin's simpleheat.js (underlying leaflet-heat)
+    // Fixes the quadrant / pie-slice canvas boundary clipping bug at high zoom levels.
+    // simpleheat hardcodes shadowOffsetX/Y = 200, which causes the source circle to cross
+    // into positive coordinates and get clipped at canvas (0,0) whenever (2 * radius + blur) >= 200.
+    if (typeof window !== "undefined" && window.simpleheat) {
+      window.simpleheat.prototype.radius = function (r, blur) {
+        blur = blur === undefined ? 15 : blur;
+        var circle = this._circle = document.createElement('canvas');
+        var ctx = circle.getContext('2d');
+        var r2 = this._r = r + blur;
+
+        circle.width = circle.height = r2 * 2;
+
+        // Dynamic offset guarantees the source circle stays strictly in negative offscreen space
+        var offset = r2 * 2 + 200;
+        ctx.shadowOffsetX = ctx.shadowOffsetY = offset;
+        ctx.shadowBlur = blur;
+        ctx.shadowColor = 'black';
+
+        ctx.beginPath();
+        ctx.arc(r2 - offset, r2 - offset, r, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fill();
+
+        return this;
+      };
+    }
+  </script>
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
@@ -681,28 +710,29 @@
     }
 
     // Adapt heatmap radius and blur to map zoom level
-    // Fixes the issue where high zoom causes tiny pixel circles instead of realistic catchment zones
+    // Calibrated for smooth, contiguous flood basin corridors without quadrant clipping or ballooning
     function adaptHeatmapToZoom() {
       if (!mapInstance) return;
       const z = mapInstance.getZoom();
 
-      // At country level (z <= 7): 18-20px
-      // At district level (z 8-11): 28-50px
-      // At street/suburb level (z >= 13): 90-180px with broad blur spreading across low-lying flood corridors
+      // At country level (z <= 7): 18px radius, 12px blur
+      // At regional level (z 8-9): 24px radius, 16px blur
+      // At district level (z 10-11): 32px radius, 22px blur
+      // At sub-district (z 12-13): 44px radius, 30px blur
+      // At street/suburb level (z >= 14): 54-68px radius, 36-46px blur
       let r = 24;
       let b = 18;
       if (z <= 7) {
-        r = 18; b = 14;
+        r = 18; b = 12;
       } else if (z <= 9) {
-        r = 28; b = 20;
+        r = 24; b = 16;
       } else if (z <= 11) {
-        r = 48; b = 34;
+        r = 32; b = 22;
       } else if (z <= 13) {
-        r = 80; b = 55;
+        r = 44; b = 30;
       } else if (z >= 14) {
-        // High zoom street level (e.g. Federal Highway, Sg Rasau, Klang)
-        r = Math.min(115 + (z - 14) * 45, 210);
-        b = Math.min(80 + (z - 14) * 30, 150);
+        r = Math.min(54 + (z - 14) * 6, 68);
+        b = Math.min(36 + (z - 14) * 4, 46);
       }
 
       if (historicalHeatLayer && typeof historicalHeatLayer.setOptions === "function") {
@@ -710,7 +740,7 @@
       }
 
       if (waterHeatLayer && typeof waterHeatLayer.setOptions === "function") {
-        waterHeatLayer.setOptions({ radius: Math.round(r * 1.15), blur: Math.round(b * 1.1) });
+        waterHeatLayer.setOptions({ radius: Math.round(r * 1.1), blur: Math.round(b * 1.05) });
       }
     }
 

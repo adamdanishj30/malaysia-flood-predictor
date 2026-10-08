@@ -1,6 +1,31 @@
 // Malaysia Flood Interactive Map & Predictive AI Engine
 // Directly queries Open-Meteo Weather API & GloFAS Hydrological Model
 
+// Monkey-patch Vladimir Agafonkin's simpleheat.js (underlying leaflet-heat)
+// Fixes the quadrant / pie-slice canvas boundary clipping bug at high zoom levels
+if (typeof window !== "undefined" && window.simpleheat) {
+  window.simpleheat.prototype.radius = function (r, blur) {
+    blur = blur === undefined ? 15 : blur;
+    var circle = this._circle = document.createElement('canvas');
+    var ctx = circle.getContext('2d');
+    var r2 = this._r = r + blur;
+
+    circle.width = circle.height = r2 * 2;
+
+    var offset = r2 * 2 + 200;
+    ctx.shadowOffsetX = ctx.shadowOffsetY = offset;
+    ctx.shadowBlur = blur;
+    ctx.shadowColor = 'black';
+
+    ctx.beginPath();
+    ctx.arc(r2 - offset, r2 - offset, r, 0, Math.PI * 2, true);
+    ctx.closePath();
+    ctx.fill();
+
+    return this;
+  };
+}
+
 let map;
 let baseLayers = {};
 let currentLayer;
@@ -90,20 +115,20 @@ function adaptHeatmapToZoomApp() {
   const z = map.getZoom();
   let r = 24;
   let b = 18;
-  if (z <= 7) { r = 18; b = 14; }
-  else if (z <= 9) { r = 28; b = 20; }
-  else if (z <= 11) { r = 48; b = 34; }
-  else if (z <= 13) { r = 80; b = 55; }
+  if (z <= 7) { r = 18; b = 12; }
+  else if (z <= 9) { r = 24; b = 16; }
+  else if (z <= 11) { r = 32; b = 22; }
+  else if (z <= 13) { r = 44; b = 30; }
   else if (z >= 14) {
-    r = Math.min(115 + (z - 14) * 45, 210);
-    b = Math.min(80 + (z - 14) * 30, 150);
+    r = Math.min(54 + (z - 14) * 6, 68);
+    b = Math.min(36 + (z - 14) * 4, 46);
   }
 
   if (historicalHeatLayer && typeof historicalHeatLayer.setOptions === "function") {
     historicalHeatLayer.setOptions({ radius: r, blur: b });
   }
   if (waterHeatLayer && typeof waterHeatLayer.setOptions === "function") {
-    waterHeatLayer.setOptions({ radius: Math.round(r * 1.15), blur: Math.round(b * 1.1) });
+    waterHeatLayer.setOptions({ radius: Math.round(r * 1.1), blur: Math.round(b * 1.05) });
   }
 }
 
@@ -432,6 +457,8 @@ async function loadHistoricalHeatmapApp() {
       minOpacity: 0.35,
       gradient: HISTORICAL_GRADIENT
     });
+
+    adaptHeatmapToZoomApp();
   } catch (e) {
     console.error("Error loading historical heatmap:", e);
   }

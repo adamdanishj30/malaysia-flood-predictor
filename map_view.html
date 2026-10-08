@@ -8,6 +8,32 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script>
+    // Monkey-patch Vladimir Agafonkin's simpleheat.js (underlying leaflet-heat)
+    // Fixes the quadrant / pie-slice canvas boundary clipping bug at high zoom levels
+    if (typeof window !== "undefined" && window.simpleheat) {
+      window.simpleheat.prototype.radius = function (r, blur) {
+        blur = blur === undefined ? 15 : blur;
+        var circle = this._circle = document.createElement('canvas');
+        var ctx = circle.getContext('2d');
+        var r2 = this._r = r + blur;
+
+        circle.width = circle.height = r2 * 2;
+
+        var offset = r2 * 2 + 200;
+        ctx.shadowOffsetX = ctx.shadowOffsetY = offset;
+        ctx.shadowBlur = blur;
+        ctx.shadowColor = 'black';
+
+        ctx.beginPath();
+        ctx.arc(r2 - offset, r2 - offset, r, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fill();
+
+        return this;
+      };
+    }
+  </script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
