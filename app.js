@@ -9,6 +9,8 @@ let hotspotMarkers = {};
 let activeUserMarker = null;
 let selectedLocation = null;
 let waterHeatLayer = null;
+let historicalHeatLayer = null;
+let isHistHeatmapVisible = false;
 
 // Embedded high-accuracy fallback hotspots across Malaysia
 const FALLBACK_HOTSPOTS = [
@@ -30,6 +32,7 @@ const FALLBACK_HOTSPOTS = [
 document.addEventListener('DOMContentLoaded', async () => {
   initMap();
   await loadHotspots();
+  await loadHistoricalHeatmapApp();
   setupEventListeners();
 });
 
@@ -367,6 +370,46 @@ function renderWaterHeatmapOverlay(lat, lon, probPct, depthM, riverFlow) {
   }
 }
 
+// Load and prepare Historical Flood Frequency Heatmap
+async function loadHistoricalHeatmapApp() {
+  if (!map || typeof L.heatLayer !== "function") return;
+  try {
+    let points = [];
+    const res = await fetch('data/historical_flood_heatmap.json').catch(() => null);
+    if (res && res.ok) {
+      const json = await res.json();
+      points = json.points || [];
+    } else {
+      points = [
+        [3.0234, 101.5381, 0.98], [5.9986, 101.9744, 1.00], [3.4506, 102.4176, 0.96],
+        [2.5148, 102.8158, 0.94], [1.7381, 103.8999, 0.95], [6.1254, 102.2381, 0.92],
+        [5.4141, 100.3142, 0.88], [3.1492, 101.6961, 0.89], [3.7619, 103.2361, 0.87],
+        [1.5173, 110.3015, 0.93], [5.9126, 116.1154, 0.91], [5.0683, 102.9961, 0.89],
+        [6.2690, 100.4190, 0.85]
+      ];
+    }
+
+    const HISTORICAL_GRADIENT = {
+      0.10: 'rgba(37, 99, 235, 0.45)',  // Blue: Never / Rarely flooded
+      0.30: 'rgba(6, 182, 212, 0.65)',  // Cyan: Low surface runoff
+      0.50: 'rgba(16, 185, 129, 0.80)', // Green: Safe buffer
+      0.68: 'rgba(245, 158, 11, 0.90)', // Amber: Moderate recurrence
+      0.82: 'rgba(249, 115, 22, 0.95)', // Orange: Frequent monsoon floods
+      1.00: 'rgba(239, 68, 68, 1.00)'   // Crimson Red: Often flooded hotspot
+    };
+
+    historicalHeatLayer = L.heatLayer(points, {
+      radius: 26,
+      blur: 18,
+      maxZoom: 15,
+      minOpacity: 0.35,
+      gradient: HISTORICAL_GRADIENT
+    });
+  } catch (e) {
+    console.error("Error loading historical heatmap:", e);
+  }
+}
+
 // 6. Machine Learning Predictive Calculation (Calibrated with JPS observations)
 function executePredictiveModel(inputs) {
   const { histRisk, curRain, dailyRain, crit1h, crit24h, soilMoist, riverDischarge, elevation } = inputs;
@@ -552,6 +595,23 @@ function setupEventListeners() {
   btnDark.addEventListener('click', () => switchLayer(baseLayers.dark, btnDark));
   btnSat.addEventListener('click', () => switchLayer(baseLayers.satellite, btnSat));
   btnStreet.addEventListener('click', () => switchLayer(baseLayers.street, btnStreet));
+
+  // Historical Flood Frequency Heatmap Toggle Button
+  const btnToggleHist = document.getElementById('btnToggleHistHeatmap');
+  if (btnToggleHist) {
+    btnToggleHist.addEventListener('click', () => {
+      isHistHeatmapVisible = !isHistHeatmapVisible;
+      if (historicalHeatLayer) {
+        if (isHistHeatmapVisible) {
+          historicalHeatLayer.addTo(map);
+          btnToggleHist.className = 'px-2.5 py-1 rounded-lg bg-red-600 text-white border border-red-400 font-semibold text-[11px] transition flex items-center gap-1 shadow-md';
+        } else {
+          map.removeLayer(historicalHeatLayer);
+          btnToggleHist.className = 'px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600 text-red-200 hover:text-white border border-red-500/40 font-semibold text-[11px] transition flex items-center gap-1';
+        }
+      }
+    });
+  }
 }
 
 // Haversine formula to compute distance in km between two GPS coordinates

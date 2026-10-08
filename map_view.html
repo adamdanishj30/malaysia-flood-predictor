@@ -160,10 +160,15 @@
         </div>
 
         <!-- Floating Map Style Switcher -->
-        <div class="absolute top-4 right-4 z-[400] bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700/80 shadow-xl flex items-center gap-1 text-xs">
+        <div class="absolute top-4 right-4 z-[400] bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700/80 shadow-xl flex items-center gap-1.5 text-xs">
           <button id="btnLayerDark" class="px-2 py-1 rounded-lg bg-blue-600 text-white font-medium text-[11px]">Dark</button>
           <button id="btnLayerSat" class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium text-[11px]">Satellite</button>
           <button id="btnLayerStreet" class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium text-[11px]">Street</button>
+          <div class="w-px h-4 bg-slate-700 mx-0.5"></div>
+          <button id="btnToggleHistHeatmap" class="px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600 text-red-200 hover:text-white border border-red-500/40 font-semibold text-[11px] transition flex items-center gap-1">
+            <i class="fa-solid fa-fire-flame-curved text-amber-400 text-xs"></i>
+            <span>Historical Heatmap</span>
+          </button>
         </div>
 
       </div>

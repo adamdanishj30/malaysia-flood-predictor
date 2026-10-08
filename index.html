@@ -475,11 +475,40 @@
               <i class="fa-solid fa-water text-cyan-400 text-xs"></i>
               <span id="mapWaterStatusText">Water Level: Normal</span>
             </span>
-            <!-- Heatmap toggle button -->
-            <button id="btnToggleHeatmap" title="Toggle Blue Water Inundation Heatmap" class="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-blue-600/40 hover:bg-blue-600 text-cyan-200 hover:text-white border border-blue-400/30 transition flex items-center gap-1">
-              <i class="fa-solid fa-layer-group text-[10px]"></i>
-              <span id="btnHeatmapText">Water Layer: ON</span>
+          </div>
+        </div>
+
+        <!-- Heatmap Layer Switcher & Historical Legend Bar -->
+        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+          <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+            <span class="text-slate-400 text-[10px] uppercase font-bold tracking-wider mr-1">Heatmap:</span>
+            <button id="btnModeHist" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold transition flex items-center gap-1 shadow-sm">
+              <i class="fa-solid fa-fire-flame-curved text-amber-300 text-xs"></i>
+              <span>Historical (Blue → Red)</span>
             </button>
+            <button id="btnModeLive" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1">
+              <i class="fa-solid fa-water text-cyan-400 text-xs"></i>
+              <span>Live Water (Blue)</span>
+            </button>
+            <button id="btnModeBoth" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1">
+              <i class="fa-solid fa-layer-group text-blue-400 text-xs"></i>
+              <span>Both Combined</span>
+            </button>
+          </div>
+
+          <!-- Color Spectrum Legend -->
+          <div id="heatmapLegendBar" class="flex items-center space-x-2 text-[10px] text-slate-300 self-end sm:self-auto bg-slate-900/80 px-2.5 py-1 rounded-lg border border-white/5">
+            <span class="text-slate-400 text-[9px] uppercase font-semibold">Flood History:</span>
+            <div class="flex items-center space-x-1.5">
+              <span class="inline-block w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_6px_#3b82f6]"></span>
+              <span class="text-blue-300 font-medium">Never/Rare</span>
+              <span class="text-slate-500 text-[9px]">→</span>
+              <span class="inline-block w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_#f59e0b]"></span>
+              <span class="text-amber-300 font-medium">Moderate</span>
+              <span class="text-slate-500 text-[9px]">→</span>
+              <span class="inline-block w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
+              <span class="text-red-400 font-bold">Often (Hotspots)</span>
+            </div>
           </div>
         </div>
         
@@ -528,12 +557,15 @@
     let mapMarker = null;
     let waterHeatLayer = null;
     let waterRippleMarker = null;
-    let isHeatmapEnabled = true;
+    let historicalHeatLayer = null;
+    let historicalHotspotMarkers = [];
+    let currentHeatmapMode = "historical"; // 'historical', 'live', 'both'
     let latestFloodState = { riskScore: 10, depth: 0.0 };
 
     document.addEventListener("DOMContentLoaded", () => {
       initChart();
       initMap();
+      loadHistoricalHeatmap();
       fetchTelemetry(currentLat, currentLon, currentLocationName);
       setupEvents();
     });
@@ -1001,7 +1033,7 @@
           txt.textContent = "🌊 FLOOD CONFIRMED: High Inundation Surge";
         } else if (isRising || isConfirmed) {
           pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 flex items-center gap-1.5 shadow-sm animate-pulse";
-          txt.textContent = "🌊 Water Level: RISING (Menaik) • Surge Inundation Active";
+          txt.textContent = "🌊 Water Level: RISING (Menaik) • Surge Active";
         } else {
           pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/40 flex items-center gap-1.5 shadow-sm";
           txt.textContent = "🌊 Water Level: STABLE (Normal Channel)";
@@ -1014,7 +1046,7 @@
         waterRippleMarker = null;
       }
 
-      if ((isRising || isConfirmed) && isHeatmapEnabled) {
+      if (isRising || isConfirmed) {
         const rippleIcon = L.divIcon({
           className: 'water-ripple-container-icon',
           html: `
@@ -1028,7 +1060,7 @@
           iconSize: [48, 48],
           iconAnchor: [0, 0]
         });
-        waterRippleMarker = L.marker([lat, lon], { icon: rippleIcon, zIndexOffset: 1000 }).addTo(mapInstance);
+        waterRippleMarker = L.marker([lat, lon], { icon: rippleIcon, zIndexOffset: 1000 });
       }
 
       // 3. Leaflet Blue Heatmap Layer
@@ -1037,55 +1069,203 @@
         waterHeatLayer = null;
       }
 
-      if (!isHeatmapEnabled || typeof L.heatLayer !== "function") return;
+      if (typeof L.heatLayer === "function") {
+        const heatPoints = [];
+        const baseIntensity = isConfirmed ? 0.95 : (isRising ? 0.75 : 0.35);
+        const spreadCount = isConfirmed ? 36 : (isRising ? 24 : 12);
+        const spreadRadius = isConfirmed ? 0.045 : (isRising ? 0.032 : 0.016);
 
-      const heatPoints = [];
-      const baseIntensity = isConfirmed ? 0.95 : (isRising ? 0.75 : 0.35);
-      const spreadCount = isConfirmed ? 36 : (isRising ? 24 : 12);
-      const spreadRadius = isConfirmed ? 0.045 : (isRising ? 0.032 : 0.016);
+        // Local Inundation Pool around inspection coordinates
+        for (let i = 0; i < spreadCount; i++) {
+          const angle = (i / spreadCount) * Math.PI * 2;
+          const r = Math.pow(Math.random(), 0.65) * spreadRadius;
+          const pLat = lat + (Math.sin(angle) * r);
+          const pLon = lon + (Math.cos(angle) * r * 1.15);
+          const weight = Math.max(baseIntensity * (1 - (r / spreadRadius) * 0.35), 0.2);
+          heatPoints.push([pLat, pLon, weight]);
+        }
 
-      // Local Inundation Pool around inspection coordinates
-      for (let i = 0; i < spreadCount; i++) {
-        const angle = (i / spreadCount) * Math.PI * 2;
-        const r = Math.pow(Math.random(), 0.65) * spreadRadius;
-        const pLat = lat + (Math.sin(angle) * r);
-        const pLon = lon + (Math.cos(angle) * r * 1.15);
-        const weight = Math.max(baseIntensity * (1 - (r / spreadRadius) * 0.35), 0.2);
-        heatPoints.push([pLat, pLon, weight]);
-      }
+        // River Basin Channel points connecting to nearest JPS telemetry station
+        if (station && (station.lat !== lat || station.lon !== lon)) {
+          const steps = 14;
+          for (let s = 0; s <= steps; s++) {
+            const t = s / steps;
+            const bend = Math.sin(t * Math.PI) * 0.008;
+            const rLat = lat + (station.lat - lat) * t + bend;
+            const rLon = lon + (station.lon - lon) * t - bend;
+            const rWeight = Math.max(baseIntensity * 0.85, 0.25);
+            heatPoints.push([rLat, rLon, rWeight]);
 
-      // River Basin Channel points connecting to nearest JPS telemetry station
-      if (station && (station.lat !== lat || station.lon !== lon)) {
-        const steps = 14;
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps;
-          const bend = Math.sin(t * Math.PI) * 0.008;
-          const rLat = lat + (station.lat - lat) * t + bend;
-          const rLon = lon + (station.lon - lon) * t - bend;
-          const rWeight = Math.max(baseIntensity * 0.85, 0.25);
-          heatPoints.push([rLat, rLon, rWeight]);
-
-          if (isRising || isConfirmed) {
-            heatPoints.push([rLat + 0.004, rLon - 0.003, rWeight * 0.7]);
-            heatPoints.push([rLat - 0.004, rLon + 0.003, rWeight * 0.7]);
+            if (isRising || isConfirmed) {
+              heatPoints.push([rLat + 0.004, rLon - 0.003, rWeight * 0.7]);
+              heatPoints.push([rLat - 0.004, rLon + 0.003, rWeight * 0.7]);
+            }
           }
         }
+
+        // Pure hydrological water blue palette
+        waterHeatLayer = L.heatLayer(heatPoints, {
+          radius: isConfirmed ? 36 : (isRising ? 28 : 20),
+          blur: isConfirmed ? 22 : (isRising ? 18 : 14),
+          maxZoom: 15,
+          minOpacity: 0.32,
+          gradient: {
+            0.15: 'rgba(2, 132, 199, 0.45)',   // Deep river azure
+            0.40: 'rgba(14, 165, 233, 0.70)',  // Flowing river blue
+            0.65: 'rgba(56, 189, 248, 0.88)',  // Elevated water surge
+            0.85: 'rgba(96, 165, 250, 0.95)',  // Critical inundation zone
+            1.00: 'rgba(224, 242, 254, 1.00)'  // Surface crest / white water
+          }
+        });
       }
 
-      // Pure hydrological water blue palette
-      waterHeatLayer = L.heatLayer(heatPoints, {
-        radius: isConfirmed ? 36 : (isRising ? 28 : 20),
-        blur: isConfirmed ? 22 : (isRising ? 18 : 14),
-        maxZoom: 15,
-        minOpacity: 0.32,
-        gradient: {
-          0.15: 'rgba(2, 132, 199, 0.45)',   // Deep river azure
-          0.40: 'rgba(14, 165, 233, 0.70)',  // Flowing river blue
-          0.65: 'rgba(56, 189, 248, 0.88)',  // Elevated water surge
-          0.85: 'rgba(96, 165, 250, 0.95)',  // Critical inundation zone
-          1.00: 'rgba(224, 242, 254, 1.00)'  // Surface crest / white water
+      syncHeatmapLayers();
+    }
+
+    // 5d. Historical Flood Frequency Heatmap Loader: Blue (Rare/Never) -> Red (Often Flooded)
+    async function loadHistoricalHeatmap() {
+      if (!mapInstance || typeof L.heatLayer !== "function") return;
+
+      try {
+        let points = [];
+        const res = await fetch('data/historical_flood_heatmap.json').catch(() => null);
+        if (res && res.ok) {
+          const json = await res.json();
+          points = json.points || [];
+          historicalDataCache = json;
+        } else {
+          // Robust embedded points across Malaysian flood basins
+          points = [
+            [3.0234, 101.5381, 0.98], [5.9986, 101.9744, 1.00], [3.4506, 102.4176, 0.96],
+            [2.5148, 102.8158, 0.94], [1.7381, 103.8999, 0.95], [6.1254, 102.2381, 0.92],
+            [5.4141, 100.3142, 0.88], [3.1492, 101.6961, 0.89], [3.7619, 103.2361, 0.87],
+            [1.5173, 110.3015, 0.93], [5.9126, 116.1154, 0.91], [5.0683, 102.9961, 0.89],
+            [6.2690, 100.4190, 0.85], [3.20, 101.55, 0.12], [3.05, 101.60, 0.12],
+            [5.80, 102.10, 0.12], [2.30, 102.70, 0.12], [1.60, 110.20, 0.12]
+          ];
         }
-      }).addTo(mapInstance);
+
+        if (historicalHeatLayer) {
+          mapInstance.removeLayer(historicalHeatLayer);
+          historicalHeatLayer = null;
+        }
+
+        // Color Spectrum: Blue (Never/Rare) -> Cyan -> Green -> Amber -> Red (Often Flooded)
+        const HISTORICAL_GRADIENT = {
+          0.10: 'rgba(37, 99, 235, 0.45)',  // Blue: Never or rarely flooded
+          0.30: 'rgba(6, 182, 212, 0.65)',  // Cyan: Low surface runoff
+          0.50: 'rgba(16, 185, 129, 0.80)', // Green: Safe buffer
+          0.68: 'rgba(245, 158, 11, 0.90)', // Amber: Moderate flood recurrence
+          0.82: 'rgba(249, 115, 22, 0.95)', // Orange: Frequent monsoon floods
+          1.00: 'rgba(239, 68, 68, 1.00)'   // Crimson Red: Often flooded recurrent hotspot
+        };
+
+        historicalHeatLayer = L.heatLayer(points, {
+          radius: 26,
+          blur: 18,
+          maxZoom: 15,
+          minOpacity: 0.35,
+          gradient: HISTORICAL_GRADIENT
+        });
+
+        // Add interactive hotspot markers with past flood statistics
+        if (historicalDataCache?.hotspots) {
+          historicalHotspotMarkers.forEach(m => mapInstance.removeLayer(m));
+          historicalHotspotMarkers = [];
+
+          historicalDataCache.hotspots.forEach(spot => {
+            const isSevere = spot.intensity >= 0.90;
+            const color = isSevere ? '#ef4444' : '#f59e0b';
+            const m = L.circleMarker([spot.lat, spot.lon], {
+              radius: 5.5,
+              fillColor: color,
+              color: '#ffffff',
+              weight: 1.5,
+              fillOpacity: 0.9
+            });
+            m.bindPopup(`
+              <div class="text-xs p-1 space-y-1 font-sans">
+                <p class="font-bold text-white text-sm">${spot.name}</p>
+                <p class="text-[11px] font-semibold ${isSevere ? 'text-red-400' : 'text-amber-400'}">
+                  ${isSevere ? '🔴 Frequent Recurrent Hotspot (Often Flooded)' : '🟡 Moderate Recurrence'}
+                </p>
+                <div class="text-[10px] text-slate-300 space-y-0.5 pt-1 border-t border-slate-700">
+                  <p>History: <strong>${spot.recurrence}</strong></p>
+                  <p>Max Past Depth: <strong>${spot.depth}</strong></p>
+                </div>
+              </div>
+            `);
+            historicalHotspotMarkers.push(m);
+          });
+        }
+
+        syncHeatmapLayers();
+      } catch (err) {
+        console.error("Historical heatmap load error:", err);
+      }
+    }
+
+    // 5e. Synchronize Map Layers based on active view mode
+    function syncHeatmapLayers() {
+      if (!mapInstance) return;
+
+      const showHistorical = (currentHeatmapMode === "historical" || currentHeatmapMode === "both");
+      const showLive = (currentHeatmapMode === "live" || currentHeatmapMode === "both");
+
+      // 1. Historical Heatmap Layer
+      if (historicalHeatLayer) {
+        if (showHistorical) {
+          if (!mapInstance.hasLayer(historicalHeatLayer)) historicalHeatLayer.addTo(mapInstance);
+        } else {
+          if (mapInstance.hasLayer(historicalHeatLayer)) mapInstance.removeLayer(historicalHeatLayer);
+        }
+      }
+
+      // Historical Hotspot Markers
+      historicalHotspotMarkers.forEach(m => {
+        if (showHistorical) {
+          if (!mapInstance.hasLayer(m)) m.addTo(mapInstance);
+        } else {
+          if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m);
+        }
+      });
+
+      // 2. Live Blue Water Heatmap Layer
+      if (waterHeatLayer) {
+        if (showLive) {
+          if (!mapInstance.hasLayer(waterHeatLayer)) waterHeatLayer.addTo(mapInstance);
+        } else {
+          if (mapInstance.hasLayer(waterHeatLayer)) mapInstance.removeLayer(waterHeatLayer);
+        }
+      }
+
+      // 3. Live Ripple Wave Marker
+      if (waterRippleMarker) {
+        if (showLive) {
+          if (!mapInstance.hasLayer(waterRippleMarker)) waterRippleMarker.addTo(mapInstance);
+        } else {
+          if (mapInstance.hasLayer(waterRippleMarker)) mapInstance.removeLayer(waterRippleMarker);
+        }
+      }
+
+      // Update button styling in UI
+      const bHist = document.getElementById('btnModeHist');
+      const bLive = document.getElementById('btnModeLive');
+      const bBoth = document.getElementById('btnModeBoth');
+      const leg = document.getElementById('heatmapLegendBar');
+
+      const activeClass = "px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold transition flex items-center gap-1 shadow-sm";
+      const inactiveClass = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1";
+
+      if (bHist && bLive && bBoth) {
+        bHist.className = currentHeatmapMode === "historical" ? activeClass : inactiveClass;
+        bLive.className = currentHeatmapMode === "live" ? activeClass : inactiveClass;
+        bBoth.className = currentHeatmapMode === "both" ? activeClass : inactiveClass;
+      }
+
+      if (leg) {
+        leg.style.opacity = showHistorical ? "1" : "0.35";
+      }
     }
 
     // 6. Reverse Geocode Coordinates to City
@@ -1194,24 +1374,14 @@
         }
       });
 
-      // Blue Water Heatmap Layer Toggle Button
-      const btnToggleHeatmap = document.getElementById('btnToggleHeatmap');
-      const btnHeatmapText = document.getElementById('btnHeatmapText');
-      if (btnToggleHeatmap) {
-        btnToggleHeatmap.addEventListener('click', () => {
-          isHeatmapEnabled = !isHeatmapEnabled;
-          if (btnHeatmapText) {
-            btnHeatmapText.textContent = isHeatmapEnabled ? "Water Layer: ON" : "Water Layer: OFF";
-          }
-          btnToggleHeatmap.className = isHeatmapEnabled
-            ? "text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-blue-600/40 hover:bg-blue-600 text-cyan-200 hover:text-white border border-blue-400/30 transition flex items-center gap-1"
-            : "text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition flex items-center gap-1";
-          
-          if (mapInstance) {
-            fetchTelemetry(currentLat, currentLon, currentLocationName);
-          }
-        });
-      }
+      // Heatmap Mode Buttons
+      const bHist = document.getElementById('btnModeHist');
+      const bLive = document.getElementById('btnModeLive');
+      const bBoth = document.getElementById('btnModeBoth');
+
+      if (bHist) bHist.addEventListener('click', () => { currentHeatmapMode = "historical"; syncHeatmapLayers(); });
+      if (bLive) bLive.addEventListener('click', () => { currentHeatmapMode = "live"; syncHeatmapLayers(); });
+      if (bBoth) bBoth.addEventListener('click', () => { currentHeatmapMode = "both"; syncHeatmapLayers(); });
 
       // Realtime Clock Updater
       function updateClock() {
