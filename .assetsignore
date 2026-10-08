@@ -1,0 +1,6 @@
+.git
+*.py
+*.bat
+models/
+data/malaysia_floods_cleaned.csv
+FLOOD_PREDICTION_MALAYSIA.md
