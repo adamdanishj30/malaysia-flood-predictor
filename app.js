@@ -8,6 +8,7 @@ let hotspotsData = [];
 let hotspotMarkers = {};
 let activeUserMarker = null;
 let selectedLocation = null;
+let waterHeatLayer = null;
 
 // Embedded high-accuracy fallback hotspots across Malaysia
 const FALLBACK_HOTSPOTS = [
@@ -317,9 +318,52 @@ async function runPredictionPipeline(location, isCustom) {
 
     activeUserMarker.bindPopup(popupContent, { offset: [0, -10] }).openPopup();
 
+    // Trigger Blue Water Inundation Heatmap
+    renderWaterHeatmapOverlay(location.lat, location.lon, prediction.probabilityPercent, prediction.estimatedDepthMeters, riverDischarge);
+
   } catch (err) {
     console.error("Telemetry error:", err);
     document.getElementById('advisoryText').textContent = "Failed to fetch live satellite weather. Please retry.";
+  }
+}
+
+// Render dynamic blue water inundation heatmap on map
+function renderWaterHeatmapOverlay(lat, lon, probPct, depthM, riverFlow) {
+  if (!map || typeof L.heatLayer !== "function") return;
+
+  if (waterHeatLayer) {
+    map.removeLayer(waterHeatLayer);
+    waterHeatLayer = null;
+  }
+
+  // Generate inundation points if water level is elevated or rising
+  if (probPct >= 25 || depthM > 0 || riverFlow > 3.0) {
+    const heatPoints = [];
+    const count = probPct >= 60 ? 36 : 20;
+    const radius = probPct >= 60 ? 0.045 : 0.025;
+    const baseWeight = probPct >= 60 ? 0.95 : 0.65;
+
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const r = Math.pow(Math.random(), 0.6) * radius;
+      const pLat = lat + Math.sin(angle) * r;
+      const pLon = lon + Math.cos(angle) * r * 1.1;
+      heatPoints.push([pLat, pLon, baseWeight * (1 - (r / radius) * 0.3)]);
+    }
+
+    waterHeatLayer = L.heatLayer(heatPoints, {
+      radius: probPct >= 60 ? 38 : 24,
+      blur: probPct >= 60 ? 22 : 16,
+      maxZoom: 15,
+      minOpacity: 0.35,
+      gradient: {
+        0.15: 'rgba(2, 132, 199, 0.45)',
+        0.40: 'rgba(14, 165, 233, 0.70)',
+        0.65: 'rgba(56, 189, 248, 0.88)',
+        0.85: 'rgba(96, 165, 250, 0.95)',
+        1.00: 'rgba(224, 242, 254, 1.00)'
+      }
+    }).addTo(map);
   }
 }
 

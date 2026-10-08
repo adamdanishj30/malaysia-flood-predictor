@@ -11,6 +11,8 @@
   <!-- Leaflet for Malaysian Map integration -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet Heatmap Plugin for Blue Water Inundation -->
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
@@ -70,10 +72,62 @@
       background: rgba(8, 16, 32, 0.95) !important;
       color: #fff !important;
       border: 1px solid rgba(59, 130, 246, 0.3) !important;
-      border-radius: 0.75rem !important;
+    /* Animated Blue Water Surge & Ripples when Water Level is Rising */
+    @keyframes waterRipple {
+      0% {
+        transform: scale(0.25);
+        opacity: 0.95;
+      }
+      50% {
+        opacity: 0.55;
+      }
+      100% {
+        transform: scale(3.5);
+        opacity: 0;
+      }
     }
-    .leaflet-popup-tip {
-      background: rgba(8, 16, 32, 0.95) !important;
+
+    .water-ripple-box {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      margin-left: -24px;
+      margin-top: -24px;
+    }
+
+    .water-ripple-circle {
+      position: absolute;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid rgba(56, 189, 248, 0.9);
+      background: radial-gradient(circle, rgba(14, 165, 233, 0.35) 0%, rgba(2, 132, 199, 0.1) 60%, transparent 100%);
+      animation: waterRipple 2.2s cubic-bezier(0.1, 0.7, 0.1, 1) infinite;
+    }
+
+    .water-ripple-circle.delay-1 {
+      animation-delay: 0.7s;
+      border-color: rgba(96, 165, 250, 0.75);
+    }
+
+    .water-ripple-circle.delay-2 {
+      animation-delay: 1.4s;
+      border-color: rgba(30, 64, 175, 0.6);
+    }
+
+    .water-center-dot {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 16px #38bdf8, 0 0 32px #0284c7;
+      border: 2.5px solid #ffffff;
+      z-index: 10;
     }
   </style>
 </head>
@@ -408,14 +462,25 @@
 
       <!-- Collapsible / Embedded Interactive Malaysian Map Card -->
       <div id="mapContainer" class="glass-card p-5 space-y-3">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center space-x-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
             <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">
               Interactive Malaysian Map Inspector
             </h3>
           </div>
-          <span class="text-[11px] text-slate-400">Click anywhere on Malaysia to inspect</span>
+          <div class="flex items-center space-x-2">
+            <!-- Dynamic Blue Water / Rising Status Badge -->
+            <span id="mapWaterStatusPill" class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/40 flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-water text-cyan-400 text-xs"></i>
+              <span id="mapWaterStatusText">Water Level: Normal</span>
+            </span>
+            <!-- Heatmap toggle button -->
+            <button id="btnToggleHeatmap" title="Toggle Blue Water Inundation Heatmap" class="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-blue-600/40 hover:bg-blue-600 text-cyan-200 hover:text-white border border-blue-400/30 transition flex items-center gap-1">
+              <i class="fa-solid fa-layer-group text-[10px]"></i>
+              <span id="btnHeatmapText">Water Layer: ON</span>
+            </button>
+          </div>
         </div>
         
         <!-- Leaflet Map Container -->
@@ -461,6 +526,10 @@
     let hourlyDataStore = {};
     let mapInstance = null;
     let mapMarker = null;
+    let waterHeatLayer = null;
+    let waterRippleMarker = null;
+    let isHeatmapEnabled = true;
+    let latestFloodState = { riskScore: 10, depth: 0.0 };
 
     document.addEventListener("DOMContentLoaded", () => {
       initChart();
@@ -912,6 +981,111 @@
       const progressEl = document.getElementById('wlProgressFill');
       progressEl.style.width = `${progressPct}%`;
       progressEl.className = `absolute top-0 bottom-0 left-0 ${barColor} rounded-full transition-all duration-700`;
+
+      // Trigger Blue Water Inundation Heatmap & Animated Ripples
+      const isRising = trendText.includes("RISING") || curRain > 5 || rain24h > 25 || currentWL >= nearest.alert;
+      const isConfirmed = stageText !== "NORMAL" || (latestFloodState && latestFloodState.riskScore >= 50);
+      updateWaterInundationMap(lat, lon, isRising, isConfirmed, latestFloodState?.riskScore || 15, latestFloodState?.depth || 0.0, nearest, currentWL);
+    }
+
+    // 5c. Update Blue Water Inundation Heatmap & Animated Ripple Waves
+    function updateWaterInundationMap(lat, lon, isRising, isConfirmed, riskScore, depth, station, currentWL) {
+      if (!mapInstance) return;
+
+      // 1. Update Map Header Status Pill
+      const pill = document.getElementById('mapWaterStatusPill');
+      const txt = document.getElementById('mapWaterStatusText');
+      if (pill && txt) {
+        if (isConfirmed && riskScore >= 70) {
+          pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1.5 shadow-sm animate-pulse";
+          txt.textContent = "🌊 FLOOD CONFIRMED: High Inundation Surge";
+        } else if (isRising || isConfirmed) {
+          pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 flex items-center gap-1.5 shadow-sm animate-pulse";
+          txt.textContent = "🌊 Water Level: RISING (Menaik) • Surge Inundation Active";
+        } else {
+          pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/40 flex items-center gap-1.5 shadow-sm";
+          txt.textContent = "🌊 Water Level: STABLE (Normal Channel)";
+        }
+      }
+
+      // 2. Animated Water Wave Ripple Marker
+      if (waterRippleMarker) {
+        mapInstance.removeLayer(waterRippleMarker);
+        waterRippleMarker = null;
+      }
+
+      if ((isRising || isConfirmed) && isHeatmapEnabled) {
+        const rippleIcon = L.divIcon({
+          className: 'water-ripple-container-icon',
+          html: `
+            <div class="water-ripple-box">
+              <div class="water-ripple-circle"></div>
+              <div class="water-ripple-circle delay-1"></div>
+              <div class="water-ripple-circle delay-2"></div>
+              <div class="water-center-dot"></div>
+            </div>
+          `,
+          iconSize: [48, 48],
+          iconAnchor: [0, 0]
+        });
+        waterRippleMarker = L.marker([lat, lon], { icon: rippleIcon, zIndexOffset: 1000 }).addTo(mapInstance);
+      }
+
+      // 3. Leaflet Blue Heatmap Layer
+      if (waterHeatLayer) {
+        mapInstance.removeLayer(waterHeatLayer);
+        waterHeatLayer = null;
+      }
+
+      if (!isHeatmapEnabled || typeof L.heatLayer !== "function") return;
+
+      const heatPoints = [];
+      const baseIntensity = isConfirmed ? 0.95 : (isRising ? 0.75 : 0.35);
+      const spreadCount = isConfirmed ? 36 : (isRising ? 24 : 12);
+      const spreadRadius = isConfirmed ? 0.045 : (isRising ? 0.032 : 0.016);
+
+      // Local Inundation Pool around inspection coordinates
+      for (let i = 0; i < spreadCount; i++) {
+        const angle = (i / spreadCount) * Math.PI * 2;
+        const r = Math.pow(Math.random(), 0.65) * spreadRadius;
+        const pLat = lat + (Math.sin(angle) * r);
+        const pLon = lon + (Math.cos(angle) * r * 1.15);
+        const weight = Math.max(baseIntensity * (1 - (r / spreadRadius) * 0.35), 0.2);
+        heatPoints.push([pLat, pLon, weight]);
+      }
+
+      // River Basin Channel points connecting to nearest JPS telemetry station
+      if (station && (station.lat !== lat || station.lon !== lon)) {
+        const steps = 14;
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          const bend = Math.sin(t * Math.PI) * 0.008;
+          const rLat = lat + (station.lat - lat) * t + bend;
+          const rLon = lon + (station.lon - lon) * t - bend;
+          const rWeight = Math.max(baseIntensity * 0.85, 0.25);
+          heatPoints.push([rLat, rLon, rWeight]);
+
+          if (isRising || isConfirmed) {
+            heatPoints.push([rLat + 0.004, rLon - 0.003, rWeight * 0.7]);
+            heatPoints.push([rLat - 0.004, rLon + 0.003, rWeight * 0.7]);
+          }
+        }
+      }
+
+      // Pure hydrological water blue palette
+      waterHeatLayer = L.heatLayer(heatPoints, {
+        radius: isConfirmed ? 36 : (isRising ? 28 : 20),
+        blur: isConfirmed ? 22 : (isRising ? 18 : 14),
+        maxZoom: 15,
+        minOpacity: 0.32,
+        gradient: {
+          0.15: 'rgba(2, 132, 199, 0.45)',   // Deep river azure
+          0.40: 'rgba(14, 165, 233, 0.70)',  // Flowing river blue
+          0.65: 'rgba(56, 189, 248, 0.88)',  // Elevated water surge
+          0.85: 'rgba(96, 165, 250, 0.95)',  // Critical inundation zone
+          1.00: 'rgba(224, 242, 254, 1.00)'  // Surface crest / white water
+        }
+      }).addTo(mapInstance);
     }
 
     // 6. Reverse Geocode Coordinates to City
@@ -1019,6 +1193,25 @@
           setTimeout(() => mapInstance.invalidateSize(), 200);
         }
       });
+
+      // Blue Water Heatmap Layer Toggle Button
+      const btnToggleHeatmap = document.getElementById('btnToggleHeatmap');
+      const btnHeatmapText = document.getElementById('btnHeatmapText');
+      if (btnToggleHeatmap) {
+        btnToggleHeatmap.addEventListener('click', () => {
+          isHeatmapEnabled = !isHeatmapEnabled;
+          if (btnHeatmapText) {
+            btnHeatmapText.textContent = isHeatmapEnabled ? "Water Layer: ON" : "Water Layer: OFF";
+          }
+          btnToggleHeatmap.className = isHeatmapEnabled
+            ? "text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-blue-600/40 hover:bg-blue-600 text-cyan-200 hover:text-white border border-blue-400/30 transition flex items-center gap-1"
+            : "text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition flex items-center gap-1";
+          
+          if (mapInstance) {
+            fetchTelemetry(currentLat, currentLon, currentLocationName);
+          }
+        });
+      }
 
       // Realtime Clock Updater
       function updateClock() {
