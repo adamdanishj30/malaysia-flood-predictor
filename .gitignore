@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Compressed Archives
+data/archive.zip
+data/archive/
+
+# OS metadata
+Thumbs.db
+.DS_Store

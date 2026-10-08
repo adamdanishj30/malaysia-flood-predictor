@@ -1,0 +1,55 @@
+{
+  "intercept": -13.322285253643297,
+  "coefficients": {
+    "rain_max_mm": -0.030486503548369213,
+    "rain_intensity_mmh": -0.04893635004823494,
+    "tempoh_hujan_hrs": 0.14343864895721103,
+    "tempoh_ulang_years": -0.021289116318748757,
+    "altitude_m": -0.636489123827289,
+    "slope_deg": -0.03086042906725384,
+    "min_distance_river": -0.03299632501342033,
+    "river_proximity_idx": 0.14359585098622327,
+    "lowland_vulnerability": -0.18263138574057025,
+    "flat_slope_idx": 0.0701452741164157,
+    "is_northeast_monsoon": -0.050391125244488445,
+    "flood_zone_proximity": 15.625045737634284,
+    "town_distance": -0.017396187235608637
+  },
+  "scaler_mean": {
+    "rain_max_mm": 102.04823759379532,
+    "rain_intensity_mmh": 29.97174432746573,
+    "tempoh_hujan_hrs": 10.745917144838893,
+    "tempoh_ulang_years": 25.08651239044076,
+    "altitude_m": 56.85118859953339,
+    "slope_deg": 5.406424692955572,
+    "min_distance_river": 2016.9081645768558,
+    "river_proximity_idx": 0.5368863911597588,
+    "lowland_vulnerability": 0.5519643099646516,
+    "flat_slope_idx": 0.3294752074047909,
+    "is_northeast_monsoon": 0.4449839208020682,
+    "flood_zone_proximity": 0.32274226674691214,
+    "town_distance": 16435.140150186417
+  },
+  "scaler_scale": {
+    "rain_max_mm": 76.26264025158339,
+    "rain_intensity_mmh": 25.167259965391406,
+    "tempoh_hujan_hrs": 22.942347179401754,
+    "tempoh_ulang_years": 101.68398954013139,
+    "altitude_m": 133.9271313045643,
+    "slope_deg": 6.182439695907326,
+    "min_distance_river": 3018.226596508415,
+    "river_proximity_idx": 0.27331504718360977,
+    "lowland_vulnerability": 0.2735693801436088,
+    "flat_slope_idx": 0.29984457014661486,
+    "is_northeast_monsoon": 0.4969640138175871,
+    "flood_zone_proximity": 0.19701172653075236,
+    "town_distance": 18044.750388621836
+  },
+  "metrics": {
+    "best_model": "Random Forest",
+    "roc_auc": 0.9999980344366696,
+    "recall": 0.9987577639751553,
+    "f1_score": 0.9981378026070763,
+    "total_samples": 19824
+  }
+}

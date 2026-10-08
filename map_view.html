@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Malaysia Flood Watch & Map-Based AI Predictor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    #map { height: 560px; border-radius: 1rem; z-index: 10; }
+    
+    /* Custom Leaflet Dark Popup Styling */
+    .leaflet-popup-content-wrapper {
+      background: rgba(15, 23, 42, 0.95) !important;
+      color: #f8fafc !important;
+      border: 1px solid rgba(59, 130, 246, 0.3) !important;
+      border-radius: 0.75rem !important;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
+      backdrop-filter: blur(8px);
+    }
+    .leaflet-popup-tip {
+      background: rgba(15, 23, 42, 0.95) !important;
+      border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    }
+    .custom-pulse-marker {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .pulse-ring-effect {
+      border: 3px solid #3b82f6;
+      border-radius: 50%;
+      height: 32px;
+      width: 32px;
+      position: absolute;
+      animation: pulsate 1.5s ease-out infinite;
+      opacity: 0;
+    }
+    @keyframes pulsate {
+      0% { transform: scale(0.1, 0.1); opacity: 0; }
+      50% { opacity: 1; }
+      100% { transform: scale(1.6, 1.6); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+          <i class="fa-solid fa-map-location-dot text-xl"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight tracking-tight text-white flex items-center gap-2">
+            Malaysia FloodMap AI <span class="text-xs bg-blue-500/20 text-blue-400 font-semibold px-2 py-0.5 rounded-full border border-blue-500/30">Interactive</span>
+          </h1>
+          <p class="text-xs text-slate-400">Click anywhere on Malaysia to inspect real-time flood threats</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="btnGpsLocation" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-600/30 transition flex items-center gap-2">
+          <i class="fa-solid fa-crosshairs"></i>
+          <span>Check My Location</span>
+        </button>
+        <span class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          19,824 JPS Records Trained
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+    <!-- Interactive Map Section (Hero Feature) -->
+    <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-4">
+      
+      <!-- Map Header & Quick Jump Buttons -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-slate-800/80">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping"></span>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              Interactive Malaysia Map Inspector
+            </h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Click <strong class="text-blue-400 font-medium">any point or river basin</strong> on the map below to analyze live rainfall, river flow, and flood risk.
+          </p>
+        </div>
+
+        <!-- Quick Region Navigator Pills -->
+        <div class="flex items-center flex-wrap gap-1.5 text-xs">
+          <span class="text-slate-400 text-[11px] mr-1 hidden lg:inline">Quick Jump:</span>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="4.2105" data-lon="107.0000" data-zoom="6">
+            🇲🇾 All Malaysia
+          </button>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="3.1390" data-lon="101.6869" data-zoom="11">
+            🏙️ KL & Klang Valley
+          </button>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="5.9986" data-lon="102.1000" data-zoom="10">
+            🌊 Kelantan
+          </button>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="3.6000" data-lon="102.5000" data-zoom="9">
+            🏞️ Pahang
+          </button>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="2.0000" data-lon="103.3000" data-zoom="9">
+            🌴 Johor
+          </button>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="5.4141" data-lon="100.3142" data-zoom="11">
+            🏖️ Penang
+          </button>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="5.9126" data-lon="116.1154" data-zoom="9">
+            🌲 Sabah
+          </button>
+          <button class="region-btn px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition" data-lat="1.5533" data-lon="110.3592" data-zoom="10">
+            🌿 Sarawak
+          </button>
+        </div>
+      </div>
+
+      <!-- Map Container with Overlays -->
+      <div class="relative">
+        <div id="map" class="w-full bg-slate-950 shadow-inner"></div>
+
+        <!-- Floating Map Controls / Legend -->
+        <div class="absolute bottom-5 left-5 z-[400] bg-slate-900/90 backdrop-blur-md p-3 rounded-xl border border-slate-700/80 shadow-2xl text-[11px] space-y-2 pointer-events-auto">
+          <p class="font-bold text-slate-200 tracking-wider uppercase text-[10px] flex items-center gap-1.5">
+            <i class="fa-solid fa-layer-group text-blue-400"></i> Flood Risk Legend
+          </p>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-slate-300">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span>Low (&lt;28%)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span>Watch (28-54%)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+              <span>Warning (55-79%)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+              <span>Danger (≥80%)</span>
+            </div>
+          </div>
+          <div class="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
+            <span>Points clicked: Live Satellite Telemetry</span>
+          </div>
+        </div>
+
+        <!-- Floating Map Style Switcher -->
+        <div class="absolute top-4 right-4 z-[400] bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700/80 shadow-xl flex items-center gap-1 text-xs">
+          <button id="btnLayerDark" class="px-2 py-1 rounded-lg bg-blue-600 text-white font-medium text-[11px]">Dark</button>
+          <button id="btnLayerSat" class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium text-[11px]">Satellite</button>
+          <button id="btnLayerStreet" class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium text-[11px]">Street</button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Active Location Telemetry & Predictive AI Assessment -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Left Column: Location Details & Historical Factors -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-location-dot text-blue-400"></i> Inspected Location Profile
+            </h3>
+            <span id="coordsBadge" class="text-[11px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+              3.0234° N, 101.5381° E
+            </span>
+          </div>
+
+          <!-- Hotspot quick dropdown selection -->
+          <label class="block text-xs font-medium text-slate-300 mb-1">Select Preset Flood Hotspot or Click Map:</label>
+          <select id="hotspotSelect" class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none transition mb-4">
+            <!-- Dynamically populated from hotspots.json -->
+          </select>
+
+          <!-- Current Location Profile Card -->
+          <div id="hotspotDetails" class="bg-slate-950/70 rounded-xl p-4 border border-slate-800 space-y-2 text-xs">
+            <div class="flex justify-between items-center pb-1 border-b border-slate-800/80">
+              <span class="text-slate-400">Area Name:</span>
+              <span id="selectedLocationName" class="font-bold text-white text-right">Taman Sri Muda, Shah Alam</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400">State / District:</span>
+              <span id="selectedRegion" class="font-medium text-slate-200">Selangor (Petaling)</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400">River Basin Catchment:</span>
+              <span id="histBasin" class="font-medium text-blue-400">Sungai Klang Basin</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400">Elevation (Altitude):</span>
+              <span id="histElevation" class="font-medium text-slate-200">8 m</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400">Historical Risk Weight:</span>
+              <span id="histScore" class="font-bold text-amber-400">92 / 100</span>
+            </div>
+            <p id="histNotes" class="text-slate-400 italic pt-2 border-t border-slate-800 text-[11px]">
+              Low-lying retention basin, severe historical flooding during monsoon surges.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+          <span>Trained Model: Random Forest & JPS Regression</span>
+          <button id="btnRefresh" class="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1">
+            <i class="fa-solid fa-rotate"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Center & Right Columns: Real-Time Dynamic AI Assessment -->
+      <div class="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        
+        <div>
+          <!-- Title & Live Threat Badge -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-800/80">
+            <div>
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Live AI Hazard Inference</span>
+              <h3 id="predictionTarget" class="text-lg font-bold text-white mt-0.5">Taman Sri Muda, Shah Alam</h3>
+            </div>
+            <div id="riskBadge" class="self-start sm:self-auto px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border shadow-md flex items-center gap-2 bg-slate-800 text-slate-300">
+              <i class="fa-solid fa-spinner fa-spin"></i> Ingesting Telemetry...
+            </div>
+          </div>
+
+          <!-- 4-Metric Grid -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5 my-3">
+            
+            <!-- 1. Probability -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col items-center justify-center text-center">
+              <span class="text-[11px] text-slate-400 font-medium">Flood Probability</span>
+              <span id="probPercent" class="text-3xl font-extrabold text-blue-400 my-1">--%</span>
+              <div class="w-full bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden">
+                <div id="probBar" class="bg-blue-500 h-1.5 rounded-full transition-all duration-700" style="width: 0%"></div>
+              </div>
+            </div>
+
+            <!-- 2. Flood Depth -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-center">
+              <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>Est. Flood Depth</span>
+                <i class="fa-solid fa-ruler-vertical text-indigo-400"></i>
+              </div>
+              <div class="flex items-baseline gap-1">
+                <span id="estDepth" class="text-2xl font-bold text-white">0.00</span>
+                <span class="text-xs text-slate-400">m</span>
+              </div>
+              <p id="depthStatus" class="text-[10px] text-slate-400 mt-1">Dry / Normal</p>
+            </div>
+
+            <!-- 3. Current Rain -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-center">
+              <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>Rainfall Intensity</span>
+                <i class="fa-solid fa-cloud-showers-heavy text-blue-400"></i>
+              </div>
+              <div class="flex items-baseline gap-1">
+                <span id="currentRain" class="text-2xl font-bold text-white">--</span>
+                <span class="text-xs text-slate-400">mm/h</span>
+              </div>
+              <p id="rainStatus" class="text-[10px] text-slate-400 mt-1">Telemetry loading...</p>
+            </div>
+
+            <!-- 4. River Discharge -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-center">
+              <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>River Discharge</span>
+                <i class="fa-solid fa-water text-cyan-400"></i>
+              </div>
+              <div class="flex items-baseline gap-1">
+                <span id="riverDischarge" class="text-2xl font-bold text-white">--</span>
+                <span class="text-xs text-slate-400">m³/s</span>
+              </div>
+              <p id="riverStatus" class="text-[10px] text-slate-400 mt-1">GloFAS forecast</p>
+            </div>
+
+          </div>
+
+          <!-- Secondary Environmental Telemetry -->
+          <div class="grid grid-cols-3 gap-3 text-xs my-3">
+            <div class="p-2.5 bg-slate-950/50 rounded-xl border border-slate-800/80 flex items-center justify-between">
+              <div>
+                <p class="text-slate-400 text-[10px]">24h Rain Accumulation</p>
+                <p id="rain24h" class="text-sm font-bold text-white mt-0.5">-- mm</p>
+              </div>
+              <i class="fa-solid fa-cloud-rain text-blue-400 text-sm"></i>
+            </div>
+            <div class="p-2.5 bg-slate-950/50 rounded-xl border border-slate-800/80 flex items-center justify-between">
+              <div>
+                <p class="text-slate-400 text-[10px]">Topsoil Saturation</p>
+                <p id="soilMoist" class="text-sm font-bold text-emerald-400 mt-0.5">-- m³/m³</p>
+              </div>
+              <i class="fa-solid fa-seedling text-emerald-400 text-sm"></i>
+            </div>
+            <div class="p-2.5 bg-slate-950/50 rounded-xl border border-slate-800/80 flex items-center justify-between">
+              <div>
+                <p class="text-slate-400 text-[10px]">Relative Humidity</p>
+                <p id="relHumidity" class="text-sm font-bold text-indigo-400 mt-0.5">-- %</p>
+              </div>
+              <i class="fa-solid fa-droplet text-indigo-400 text-sm"></i>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Advisory Notice -->
+        <div id="advisoryBox" class="mt-2 bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-300 flex items-start gap-3">
+          <i class="fa-solid fa-shield-halved text-blue-400 text-lg mt-0.5"></i>
+          <div>
+            <span class="font-bold text-white">Emergency Advisory:</span>
+            <span id="advisoryText">Analyzing location data against Malaysian JPS flood thresholds...</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Official Emergency Hotlines (Malaysia Only) -->
+    <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4">
+      <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-2">
+        <i class="fa-solid fa-phone-volume text-red-400"></i>
+        Emergency Response Contacts (Malaysia)
+      </h4>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
+          <p class="text-slate-400 text-[10px]">MERS Emergency Hotline</p>
+          <p class="font-bold text-red-400 text-base mt-0.5">999</p>
+          <span class="text-[10px] text-slate-500">BOMBA / APM / Police</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
+          <p class="text-slate-400 text-[10px]">NADMA Malaysia</p>
+          <p class="font-bold text-white text-sm mt-0.5">03-8870 4848</p>
+          <span class="text-[10px] text-slate-500">National Disaster Mgmt</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
+          <p class="text-slate-400 text-[10px]">JPS InfoBanjir</p>
+          <p class="font-bold text-blue-400 text-sm mt-0.5">water.gov.my</p>
+          <span class="text-[10px] text-slate-500">Live River Monitoring</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
+          <p class="text-slate-400 text-[10px]">METMalaysia Hotline</p>
+          <p class="font-bold text-cyan-400 text-sm mt-0.5">1-300-22-1638</p>
+          <span class="text-[10px] text-slate-500">Heavy Rain Warnings</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800/80 bg-slate-950 py-5">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-500 space-y-1">
+      <p>Malaysia Flood Prediction Engine • Built for free deployment on Cloudflare Pages (<code class="text-blue-400">*.pages.dev</code>).</p>
+      <p>Data Sources: Jabatan Pengairan dan Saliran (JPS), Open Data Malaysia (<a href="https://data.gov.my" target="_blank" class="text-slate-400 underline">data.gov.my</a>), Open-Meteo & ECMWF GloFAS.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
