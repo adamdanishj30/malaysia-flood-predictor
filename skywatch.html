@@ -4,20 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WaspadaBanjir • Sistem Ramalan Banjir & Cuaca Malaysia</title>
+  
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js for the exact spline curve graph in screenshot -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
   <!-- Leaflet for Malaysian Map integration -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Leaflet Heatmap Plugin for Blue Water Inundation -->
+  
+  <!-- Leaflet Heatmap Plugin -->
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   <script>
-    // Monkey-patch Vladimir Agafonkin's simpleheat.js (underlying leaflet-heat)
-    // Fixes the quadrant / pie-slice canvas boundary clipping bug at high zoom levels.
-    // simpleheat hardcodes shadowOffsetX/Y = 200, which causes the source circle to cross
-    // into positive coordinates and get clipped at canvas (0,0) whenever (2 * radius + blur) >= 200.
+    // Monkey-patch Vladimir Agafonkin's simpleheat.js to prevent quadrant clipping on zoom
     if (typeof window !== "undefined" && window.simpleheat) {
       window.simpleheat.prototype.radius = function (r, blur) {
         blur = blur === undefined ? 15 : blur;
@@ -27,7 +25,6 @@
 
         circle.width = circle.height = r2 * 2;
 
-        // Dynamic offset guarantees the source circle stays strictly in negative offscreen space
         var offset = r2 * 2 + 200;
         ctx.shadowOffsetX = ctx.shadowOffsetY = offset;
         ctx.shadowBlur = blur;
@@ -42,784 +39,595 @@
       };
     }
   </script>
+
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400&display=swap');
     
     * {
-      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    /* Dramatic atmospheric cloud background matching the screenshot */
     body {
-      background: #040812 url('https://images.unsplash.com/photo-1534088568595-a066f410bcda?q=80&w=2000&auto=format&fit=crop') no-repeat center center fixed;
-      background-size: cover;
-      position: relative;
+      background-color: #06090e;
+      color: #ffffff;
     }
 
-    /* Deep atmospheric dark vignette overlay */
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(circle at 60% 40%, rgba(5, 12, 28, 0.72) 0%, rgba(2, 6, 18, 0.94) 85%);
-      z-index: -1;
+    /* Radial dark atmosphere vignette matching Dribbble shot */
+    .bg-dribbble-vignette {
+      background: radial-gradient(circle at 75% 65%, rgba(245, 158, 11, 0.12) 0%, rgba(13, 20, 32, 0.65) 45%, rgba(6, 9, 14, 0.96) 90%);
     }
 
-    /* High-fidelity glassmorphism card styling */
-    .glass-card {
-      background: rgba(10, 20, 38, 0.55);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+    /* Glassmorphism surfaces */
+    .glass-surface {
+      background: rgba(13, 20, 30, 0.78);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
-      border-radius: 1.25rem;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
     }
 
-    .glass-card-subtle {
-      background: rgba(14, 28, 52, 0.45);
-      backdrop-filter: blur(14px);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 1rem;
-    }
-
-    .glass-pill {
-      background: rgba(13, 26, 48, 0.65);
-      backdrop-filter: blur(12px);
+    .glass-surface-subtle {
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    #map {
-      height: 280px;
-      border-radius: 0.85rem;
-    }
-
-    /* Leaflet Dark Customization */
+    /* Leaflet dark theme tweaks */
     .leaflet-popup-content-wrapper {
-      background: rgba(8, 16, 32, 0.95) !important;
-      color: #fff !important;
+      background: rgba(15, 23, 42, 0.95) !important;
+      color: #f8fafc !important;
       border: 1px solid rgba(59, 130, 246, 0.3) !important;
-    /* Animated Blue Water Surge & Ripples when Water Level is Rising */
-    @keyframes waterRipple {
-      0% {
-        transform: scale(0.25);
-        opacity: 0.95;
-      }
-      50% {
-        opacity: 0.55;
-      }
-      100% {
-        transform: scale(3.5);
-        opacity: 0;
-      }
+      border-radius: 1rem !important;
+      backdrop-filter: blur(12px);
+    }
+    .leaflet-popup-tip {
+      background: rgba(15, 23, 42, 0.95) !important;
     }
 
-    .water-ripple-box {
-      position: relative;
-      width: 48px;
-      height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      margin-left: -24px;
-      margin-top: -24px;
+    /* Glow pulse animation for the active beacon dot */
+    @keyframes beaconPulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+      70% { transform: scale(1.15); box-shadow: 0 0 0 14px rgba(255, 255, 255, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
     }
-
-    .water-ripple-circle {
-      position: absolute;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      border: 2px solid rgba(56, 189, 248, 0.9);
-      background: radial-gradient(circle, rgba(14, 165, 233, 0.35) 0%, rgba(2, 132, 199, 0.1) 60%, transparent 100%);
-      animation: waterRipple 2.2s cubic-bezier(0.1, 0.7, 0.1, 1) infinite;
-    }
-
-    .water-ripple-circle.delay-1 {
-      animation-delay: 0.7s;
-      border-color: rgba(96, 165, 250, 0.75);
-    }
-
-    .water-ripple-circle.delay-2 {
-      animation-delay: 1.4s;
-      border-color: rgba(30, 64, 175, 0.6);
-    }
-
-    .water-center-dot {
-      position: relative;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: #38bdf8;
-      box-shadow: 0 0 16px #38bdf8, 0 0 32px #0284c7;
-      border: 2.5px solid #ffffff;
-      z-index: 10;
+    .beacon-glow {
+      animation: beaconPulse 2s infinite ease-in-out;
     }
   </style>
 </head>
-<body class="text-white min-h-screen flex flex-col justify-between selection:bg-blue-500 selection:text-white p-4 sm:p-6 lg:p-8">
+<body class="min-h-screen flex items-center justify-center p-2 sm:p-5 lg:p-8 selection:bg-amber-400 selection:text-slate-900">
 
-  <!-- Header Section (Matching screenshot: Logo on left, Location Search in middle, theme toggle on right) -->
-  <header class="max-w-7xl mx-auto w-full flex items-center justify-between py-2 mb-6">
+  <!-- ==================== MAIN DASHBOARD CONTAINER (MATCHING DRIBBLE MOCKUP) ==================== -->
+  <div class="w-full max-w-[1380px] min-h-[800px] rounded-[2.5rem] relative overflow-hidden border border-white/10 shadow-[0_35px_100px_rgba(0,0,0,0.92)] flex flex-col justify-between"
+       style="background: #090e17 url('https://images.unsplash.com/photo-1534088568595-a066f410bcda?q=80&w=2400&auto=format&fit=crop') center center / cover no-repeat;">
     
-    <!-- Logo -->
-    <div class="flex items-center space-x-2.5">
-      <div class="text-white text-2xl flex items-center">
-        <i class="fa-solid fa-water text-blue-400 mr-2 text-xl drop-shadow-[0_0_12px_rgba(96,165,250,0.6)]"></i>
-        <span class="font-extrabold tracking-tight text-xl text-white"><span class="text-blue-400">Waspada</span>Banjir</span>
-      </div>
-      <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
-        Malaysia
-      </span>
+    <!-- Atmospheric Storm Sunset Overlays -->
+    <div class="absolute inset-0 bg-gradient-to-r from-[#070c14]/92 via-[#09111e]/75 to-[#060a12]/88 pointer-events-none"></div>
+    <div class="absolute inset-0 bg-dribbble-vignette pointer-events-none"></div>
+
+    <!-- Inner Content Grid -->
+    <div class="relative z-10 w-full p-5 sm:p-8 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-7 items-stretch flex-1">
+      
+      <!-- ==================== LEFT SIDEBAR: "WeatherWise / WaspadaBanjir" ==================== -->
+      <aside class="lg:col-span-4 xl:col-span-3 glass-surface rounded-[2rem] p-5 sm:p-6 flex flex-col justify-between space-y-6 shadow-2xl">
+        
+        <!-- Brand Title with Signature Curved Accent -->
+        <div class="text-center pt-1">
+          <div class="inline-flex items-center gap-2">
+            <h1 class="text-2xl sm:text-[26px] font-medium tracking-tight text-white font-sans">
+              Weather<span class="text-slate-300 font-light">Wise</span>
+            </h1>
+          </div>
+          <!-- Subtle curved signature line matching screenshot -->
+          <svg class="w-24 h-2 mx-auto mt-1 opacity-70" viewBox="0 0 100 8" fill="none">
+            <path d="M 5 4 Q 50 8 95 3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          <span class="text-[9px] uppercase tracking-widest text-slate-400 font-semibold mt-1 block">WaspadaBanjir Malaysia</span>
+        </div>
+
+        <!-- Status Card with Spline & Speech Bubble -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 font-medium">
+            <span>Status</span>
+            <span class="text-[10px] text-slate-500">JPS Hydrology</span>
+          </div>
+
+          <div class="bg-[#070b13]/85 border border-white/5 rounded-2xl p-4 relative overflow-hidden shadow-inner">
+            <!-- Top Trend Header -->
+            <div class="flex items-center justify-between mb-1">
+              <span id="sidebarRiskPill" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 flex items-center gap-1.5">
+                <i class="fa-solid fa-arrow-trend-up text-[10px]"></i>
+                <span id="sidebarRiskText">↑ 23.8%</span>
+              </span>
+              <button id="btnOpenDetailsModal" class="w-5 h-5 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white text-[10px] flex items-center justify-center transition" title="View Full Telemetry Matrix">
+                <i class="fa-solid fa-question"></i>
+              </button>
+            </div>
+
+            <!-- Dynamic SVG Curve with Floating Speech Bubble -->
+            <div class="relative h-24 w-full flex items-center justify-center">
+              <svg class="w-full h-full overflow-visible" viewBox="0 0 200 90" fill="none">
+                <!-- Curve Path -->
+                <path id="statusCurveSvg" d="M 12 75 Q 85 75 125 45 T 188 20" stroke="url(#statusCurveGradient)" stroke-width="3" stroke-linecap="round" fill="none" />
+                <!-- Inflection Point Dot -->
+                <circle id="statusCurvePoint" cx="125" cy="45" r="4.5" fill="#ffffff" class="filter drop-shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
+                
+                <defs>
+                  <linearGradient id="statusCurveGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#38bdf8" />
+                    <stop offset="55%" stop-color="#fbbf24" />
+                    <stop offset="100%" stop-color="#f97316" />
+                  </linearGradient>
+                </defs>
+              </svg>
+
+              <!-- Speech Bubble: "Dangerous" / "Watch" / "Normal" matching screenshot -->
+              <div id="statusSpeechBubble" class="absolute top-3 left-6 bg-white text-slate-900 font-bold px-3 py-1 rounded-full text-xs shadow-2xl flex items-center gap-1 transform -translate-y-1 transition-all">
+                <span id="statusBubbleText">Dangerous</span>
+                <!-- Speech Bubble Tail -->
+                <div class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-white rotate-45"></div>
+              </div>
+            </div>
+
+            <!-- See More Details Link -->
+            <button id="btnSeeDetailsLink" class="text-xs text-slate-400 hover:text-white transition flex items-center justify-between w-full mt-2 pt-2 border-t border-white/5">
+              <span>See More details</span>
+              <i class="fa-solid fa-chevron-right text-[10px]"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Select Area Widget with Circular Glowing Globe/Radar Disc -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 font-medium">
+            <span>Select Area</span>
+            <div class="flex items-center space-x-1.5">
+              <i class="fa-solid fa-location-arrow text-[10px] text-slate-400"></i>
+              <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+            </div>
+          </div>
+
+          <!-- Circular Globe / Radar Disc matching screenshot -->
+          <div id="btnGlobeDisc" class="w-40 h-40 mx-auto rounded-full relative overflow-hidden bg-gradient-to-b from-slate-900 via-[#0d1627] to-amber-950/40 border border-white/10 shadow-[inset_0_0_30px_rgba(245,158,11,0.28),0_15px_30px_rgba(0,0,0,0.6)] cursor-pointer group transition hover:scale-105" title="Click to view Interactive Malaysian Map & Doppler Radar">
+            
+            <!-- Stylized Global Graticules & Continents -->
+            <svg class="w-full h-full p-2.5 opacity-55" viewBox="0 0 100 100" fill="none" stroke="currentColor">
+              <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2 3" />
+              <circle cx="50" cy="50" r="28" stroke="rgba(255,255,255,0.12)" />
+              <ellipse cx="50" cy="50" rx="44" ry="18" stroke="rgba(255,255,255,0.08)" />
+              <line x1="50" y1="6" x2="50" y2="94" stroke="rgba(255,255,255,0.06)" />
+              <line x1="6" y1="50" x2="94" y2="50" stroke="rgba(255,255,255,0.06)" />
+            </svg>
+
+            <!-- Active Glowing Hotspot Pin (Malaysia / Klang Valley) -->
+            <div class="absolute top-[48%] left-[48%] -translate-x-1/2 -translate-y-1/2">
+              <span class="relative flex h-3.5 w-3.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-cyan-500 border-2 border-white shadow-[0_0_10px_#38bdf8]"></span>
+              </span>
+            </div>
+
+            <!-- Surrounding Hotspot Beacons -->
+            <div class="absolute top-[32%] left-[64%]"><span class="w-2 h-2 rounded-full bg-amber-400 block shadow-[0_0_6px_#f59e0b]"></span></div>
+            <div class="absolute top-[62%] left-[34%]"><span class="w-2 h-2 rounded-full bg-amber-400 block shadow-[0_0_6px_#f59e0b]"></span></div>
+            <div class="absolute top-[72%] left-[68%]"><span class="w-2 h-2 rounded-full bg-emerald-400 block shadow-[0_0_6px_#10b981]"></span></div>
+
+            <!-- Warm Amber Sunset Glow at bottom of the disc -->
+            <div class="absolute bottom-0 inset-x-0 h-16 bg-gradient-to-t from-amber-600/40 via-amber-500/15 to-transparent pointer-events-none"></div>
+
+            <!-- Hover Overlay -->
+            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition bg-black/50 backdrop-blur-[2px]">
+              <span class="text-[10px] font-semibold text-white px-2.5 py-1 rounded-full bg-blue-600 shadow-md">Open Map</span>
+            </div>
+          </div>
+
+          <!-- Bottom Location Pill Button in Sidebar -->
+          <button id="btnSidebarLocPill" class="w-full bg-[#131b26]/90 hover:bg-[#1a2536] border border-white/10 rounded-full py-2.5 px-4 text-xs font-medium text-white transition flex items-center justify-center gap-2 shadow-lg">
+            <i class="fa-solid fa-location-dot text-slate-400 text-xs"></i>
+            <span id="sidebarLocationLabel" class="truncate max-w-[200px]">Shah Alam, Selangor</span>
+          </button>
+        </div>
+
+      </aside>
+
+      <!-- ==================== MAIN CENTER & RIGHT DASHBOARD ==================== -->
+      <main class="lg:col-span-8 xl:col-span-9 flex flex-col justify-between space-y-8">
+        
+        <!-- Top Navigation Bar matching screenshot -->
+        <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <!-- Location & Date on Left -->
+          <div class="flex items-center space-x-2 text-xs sm:text-sm text-slate-200 font-medium">
+            <i class="fa-solid fa-location-dot text-slate-400 text-xs"></i>
+            <span id="topCityName" class="text-white font-semibold">Shah Alam, Selangor, Malaysia</span>
+            <span id="topDateStr" class="text-slate-400 font-light">( Friday, October 9 )</span>
+          </div>
+
+          <!-- Right Buttons: Search Circle & Action Pill -->
+          <div class="flex items-center space-x-3 self-end sm:self-auto">
+            <!-- Search Button with Popout Input -->
+            <div class="relative">
+              <button id="btnSearchToggle" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center text-slate-200 transition" title="Search City / District">
+                <i class="fa-solid fa-magnifying-glass text-xs"></i>
+              </button>
+              
+              <!-- Popout Search Dropdown -->
+              <div id="searchPopout" class="hidden absolute right-0 top-11 w-72 glass-surface p-2 rounded-xl z-50 text-xs space-y-1 shadow-2xl">
+                <input id="searchCityInput" type="text" placeholder="Type city (e.g. Kuantan, Klang)..." class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-1.5 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500" />
+                <div id="searchCityResults" class="max-h-40 overflow-y-auto space-y-1 pt-1"></div>
+              </div>
+            </div>
+
+            <!-- "Download App" / "Interactive Map" pill button matching screenshot -->
+            <button id="btnOpenMapPill" class="px-5 py-2 rounded-full bg-white/15 hover:bg-white/25 border border-white/15 text-xs font-medium text-white transition backdrop-blur-md flex items-center gap-2 shadow-lg">
+              <i class="fa-solid fa-layer-group text-cyan-400 text-xs"></i>
+              <span>Live Radar & Map</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Middle Hero Row: Giant Temperature & Headline + Recently Searched Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+          
+          <!-- Left: 18° + H/L capsule + "Stormy with partly cloudy" -->
+          <div class="md:col-span-7 space-y-3">
+            <div class="flex items-baseline space-x-4">
+              <!-- Giant Minimalist Number (e.g. 18° or 28°) -->
+              <span id="heroTempNumber" class="text-7xl sm:text-8xl md:text-9xl font-light tracking-tighter text-white select-none">
+                28°
+              </span>
+
+              <!-- H / L Capsule Pill matching screenshot -->
+              <div class="bg-white/10 border border-white/10 rounded-xl px-2.5 py-1 text-[11px] font-mono text-slate-300 space-y-0.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-slate-400">H</span>
+                  <span id="heroHighTemp" class="font-bold text-white">32°</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-slate-400">L</span>
+                  <span id="heroLowTemp" class="font-bold text-white">24°</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Large Editorial Headline matching screenshot -->
+            <h2 id="heroHeadline" class="text-3xl sm:text-4xl md:text-5xl font-light tracking-tight text-white/90 leading-tight">
+              Stormy<br>
+              <span id="heroSubHeadline" class="text-white/70 font-extralight">with heavy showers</span>
+            </h2>
+          </div>
+
+          <!-- Right: Narrative Description + Recently Searched / Hotspot Cards -->
+          <div class="md:col-span-5 space-y-4">
+            <p class="text-xs text-slate-300/80 leading-relaxed font-light">
+              With real time data and advanced technology, we provide reliable forecasts for any location around Malaysia.
+            </p>
+
+            <!-- Recently Searched / Hotspots Section -->
+            <div class="space-y-2 pt-1">
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span>Recently Searched</span>
+                <button id="btnSeeAllHotspots" class="text-slate-400 hover:text-white transition text-[11px]">See All &gt;</button>
+              </div>
+
+              <!-- 2 Mini Cards matching Liverpool & Palermo in screenshot -->
+              <div class="grid grid-cols-2 gap-3">
+                <!-- Card 1: Taman Sri Muda -->
+                <div class="hotspot-mini-card glass-surface-subtle hover:bg-white/15 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xl transition cursor-pointer group shadow-lg" data-lat="3.0234" data-lon="101.5381" data-name="Taman Sri Muda, Shah Alam">
+                  <div class="flex items-center justify-between mb-2">
+                    <i class="fa-solid fa-cloud-sun text-slate-200 text-lg"></i>
+                    <span id="spotTemp1" class="text-lg font-light text-white">31°</span>
+                  </div>
+                  <p class="text-xs font-semibold text-white truncate">Sri Muda, Shah Alam</p>
+                  <p class="text-[10px] text-amber-300 font-medium">Sg. Klang Basin</p>
+                </div>
+
+                <!-- Card 2: Rantau Panjang -->
+                <div class="hotspot-mini-card glass-surface-subtle hover:bg-white/15 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xl transition cursor-pointer group shadow-lg" data-lat="5.9986" data-lon="101.9744" data-name="Rantau Panjang, Kelantan">
+                  <div class="flex items-center justify-between mb-2">
+                    <i class="fa-solid fa-cloud-bolt text-cyan-300 text-lg"></i>
+                    <span id="spotTemp2" class="text-lg font-light text-white">29°</span>
+                  </div>
+                  <p class="text-xs font-semibold text-white truncate">Rantau Panjang, Kelantan</p>
+                  <p class="text-[10px] text-red-400 font-medium">Sg. Golok Basin</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- ==================== BOTTOM: 7-DAY FORECAST WITH GLOWING SINE WAVE SPLINE ==================== -->
+        <div class="relative pt-6 pb-2 w-full">
+          <!-- Day Name Headers Row -->
+          <div id="forecastDaysRow" class="grid grid-cols-7 text-center text-xs text-slate-400 font-medium relative z-20">
+            <div>Sunday</div>
+            <div>Monday</div>
+            <div>Tuesday</div>
+            <div class="text-white font-semibold">Wednesday</div>
+            <div>Thursday</div>
+            <div>Friday</div>
+            <div>Saturday</div>
+          </div>
+
+          <!-- Canvas for the Continuous Sine Wave Spline with Active Spotlight Beacon -->
+          <div class="relative w-full h-20 my-1 z-10">
+            <canvas id="weeklySplineCanvas" class="w-full h-full"></canvas>
+          </div>
+
+          <!-- Temperature Row Under the Wave matching screenshot: 28° 26° 27° 23° 30° 25° -->
+          <div id="forecastTempsRow" class="grid grid-cols-7 text-center items-baseline relative z-20">
+            <div class="text-base sm:text-lg font-light text-slate-400">28°</div>
+            <div class="text-base sm:text-lg font-light text-slate-400">26°</div>
+            <div class="text-base sm:text-lg font-light text-slate-400">27°</div>
+            <div class="text-2xl sm:text-3xl font-normal text-white">23°</div>
+            <div class="text-base sm:text-lg font-light text-slate-400">30°</div>
+            <div class="text-base sm:text-lg font-light text-slate-400">25°</div>
+            <div class="text-base sm:text-lg font-light text-slate-400">28°</div>
+          </div>
+        </div>
+
+      </main>
+
     </div>
 
-    <!-- Search Bar (Centered Location Pill) -->
-    <div class="relative w-64 sm:w-80 md:w-96">
-      <div class="flex items-center glass-pill rounded-full px-4 py-2 border border-slate-700/60 shadow-lg focus-within:border-blue-500/80 transition-all">
-        <input 
-          id="locationSearch" 
-          type="text" 
-          placeholder="Location (e.g. Shah Alam, Kota Bharu, KL)" 
-          class="bg-transparent border-none text-xs text-white placeholder-slate-400 focus:outline-none w-full"
-          value="Shah Alam"
-        />
-        <button id="btnSearch" class="text-slate-400 hover:text-white transition ml-2">
-          <i class="fa-solid fa-location-dot text-sm text-blue-400"></i>
+  </div>
+
+  <!-- ==================== MODAL 1: FULL INTERACTIVE MAP & DOPPLER RADAR ==================== -->
+  <div id="mapModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 transition-all duration-300">
+    <div class="w-full max-w-6xl max-h-[92vh] glass-surface rounded-[2rem] p-5 sm:p-6 flex flex-col space-y-4 shadow-2xl relative overflow-hidden">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-2 border-b border-white/10">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg">
+            <i class="fa-solid fa-map text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Malaysian Map & Live Doppler Radar</h3>
+            <p class="text-xs text-slate-400">Click anywhere to inspect live rainfall, river stage, and flood risk</p>
+          </div>
+        </div>
+
+        <button id="btnCloseMapModal" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark text-sm"></i>
         </button>
       </div>
-      <!-- Autocomplete Dropdown List -->
-      <div id="searchResults" class="hidden absolute left-0 right-0 top-11 mt-1 glass-card p-1.5 z-50 text-xs space-y-1 max-h-48 overflow-y-auto"></div>
+
+      <!-- Controls & Atmosphere Layer Switchers -->
+      <div class="bg-[#090e18]/80 p-2.5 rounded-xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        <!-- Flood Layers -->
+        <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+          <span class="text-slate-400 text-[10px] uppercase font-bold tracking-wider mr-1">Flood Layer:</span>
+          <button id="btnModalHistHeat" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold transition">Historical Risk</button>
+          <button id="btnModalLiveWater" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition">Live Surge</button>
+        </div>
+
+        <!-- Radar & Satellite Clouds Controls -->
+        <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+          <button id="btnModalToggleRadar" class="px-2.5 py-1 rounded-lg bg-cyan-600/30 text-cyan-300 border border-cyan-400/40 hover:bg-cyan-600/50 font-semibold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-bolt text-xs text-cyan-300"></i>
+            <span>Live Rain Radar</span>
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          </button>
+          <button id="btnModalToggleCloud" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud text-xs text-sky-400"></i>
+            <span>Satellite Clouds</span>
+          </button>
+
+          <!-- Radar Timeline Playback Controller -->
+          <div id="modalRadarControls" class="flex items-center space-x-2 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-cyan-500/30">
+            <button id="btnModalRadarPlay" class="w-5 h-5 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white text-[9px] transition">
+              <i id="modalRadarPlayIcon" class="fa-solid fa-play"></i>
+            </button>
+            <button id="btnModalRadarPrev" class="text-slate-400 hover:text-white text-xs px-0.5"><i class="fa-solid fa-backward-step"></i></button>
+            <span id="modalRadarTimeLabel" class="text-[11px] font-mono text-cyan-300 font-bold min-w-[65px] text-center">--:--</span>
+            <button id="btnModalRadarNext" class="text-slate-400 hover:text-white text-xs px-0.5"><i class="fa-solid fa-forward-step"></i></button>
+            <span class="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">LIVE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leaflet Map Canvas -->
+      <div id="modalMap" class="w-full h-[460px] rounded-2xl overflow-hidden bg-slate-950 border border-white/5"></div>
+
+      <!-- Quick Preset Hotspots -->
+      <div class="flex items-center gap-1.5 flex-wrap text-xs pt-1">
+        <span class="text-slate-400 text-[11px]">Hotspots:</span>
+        <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="3.0234" data-lon="101.5381" data-name="Taman Sri Muda, Shah Alam">Sri Muda</button>
+        <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="5.9986" data-lon="101.9744" data-name="Rantau Panjang, Kelantan">Rantau Panjang</button>
+        <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="3.4506" data-lon="102.4176" data-name="Temerloh, Pahang">Temerloh</button>
+        <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="2.5148" data-lon="102.8158" data-name="Segamat, Johor">Segamat</button>
+        <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="5.4141" data-lon="100.3142" data-name="George Town, Penang">Penang</button>
+      </div>
+
     </div>
+  </div>
 
-    <!-- Right Controls: Toggle & GPS Button -->
-    <div class="flex items-center space-x-3">
-      <button id="btnGps" title="Detect My Location" class="w-9 h-9 rounded-full glass-pill flex items-center justify-center text-slate-300 hover:text-white transition hover:scale-105">
-        <i class="fa-solid fa-crosshairs text-xs"></i>
-      </button>
-      <button id="btnToggleMap" title="Toggle Malaysian Map View" class="px-3 py-1.5 rounded-full glass-pill text-xs font-medium text-slate-300 hover:text-white transition flex items-center gap-1.5">
-        <i class="fa-solid fa-map text-xs text-blue-400"></i>
-        <span class="hidden sm:inline">Map</span>
-      </button>
-      <button id="themeToggle" class="w-9 h-9 rounded-full glass-pill flex items-center justify-center text-slate-300 hover:text-white transition">
-        <i class="fa-solid fa-circle-half-stroke text-sm"></i>
-      </button>
-    </div>
-
-  </header>
-
-  <!-- Main Grid (Matching exact 2-column layout in screenshot) -->
-  <main class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 my-auto items-start">
-    
-    <!-- ==================== LEFT COLUMN (approx 5 cols) ==================== -->
-    <div class="lg:col-span-5 space-y-4">
+  <!-- ==================== MODAL 2: FULL HYDROLOGY TELEMETRY & JPS RIVER GAUGES ==================== -->
+  <div id="detailsModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 transition-all duration-300">
+    <div class="w-full max-w-3xl max-h-[92vh] glass-surface rounded-[2rem] p-6 flex flex-col space-y-5 shadow-2xl relative overflow-y-auto">
       
-      <!-- Top Card: Large Temperature & Current Condition -->
-      <div class="glass-card p-6 sm:p-7 relative overflow-hidden flex flex-col justify-between min-h-[220px]">
-        
-        <!-- Live Alert Badge in corner -->
-        <div class="flex justify-between items-start mb-2">
-          <div class="flex items-baseline space-x-4">
-            <span id="currentTemp" class="text-6xl sm:text-7xl font-extrabold tracking-tighter text-white">
-              28°<span class="text-3xl font-semibold text-slate-300 -ml-1">C</span>
-            </span>
-            <div>
-              <h2 id="locationCity" class="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-tight">
-                Shah Alam
-              </h2>
-              <p id="currentDateTime" class="text-xs text-slate-300 font-medium mt-0.5">
-                10:08 AM - Thursday, October 8, 2026
-              </p>
-            </div>
+      <!-- Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+            <i class="fa-solid fa-gauge-high text-sm"></i>
           </div>
-
-          <!-- Weather Icon & Condition -->
-          <div class="flex flex-col items-center justify-center text-center pl-2">
-            <div id="weatherIcon" class="text-4xl sm:text-5xl text-blue-400 mb-1 drop-shadow-[0_0_15px_rgba(96,165,250,0.5)]">
-              <i class="fa-solid fa-cloud-showers-heavy"></i>
-            </div>
-            <span id="weatherConditionText" class="text-xs font-semibold text-slate-200 capitalize">
-              Rain Showers
-            </span>
+          <div>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Multi-Factor Hydrological Telemetry</h3>
+            <p id="detailsLocationSubtitle" class="text-xs text-slate-400">Shah Alam, Selangor</p>
           </div>
         </div>
 
-        <!-- Integrated Flood Threat Indicator -->
-        <div class="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
-          <div class="flex items-center space-x-2">
-            <span class="text-slate-400">Flood Threat Level:</span>
-            <span id="floodRiskBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              WATCH (38%)
-            </span>
-          </div>
-          <span id="estDepthLabel" class="text-slate-300 font-medium">Est. Depth: <strong id="estDepthVal" class="text-white">0.25 m</strong></span>
-        </div>
-
+        <button id="btnCloseDetailsModal" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
       </div>
 
-      <!-- Middle: 3-Day Forecast Cards (Matching screenshot 3 mini cards) -->
-      <div class="grid grid-cols-3 gap-3">
-        
-        <!-- Day 1 (Today) -->
-        <div class="glass-card-subtle p-3.5 flex flex-col items-center justify-between text-center min-h-[110px]">
-          <span class="text-xs font-semibold text-slate-300">Today</span>
-          <div id="forecastIcon0" class="text-2xl text-blue-400 my-1">
-            <i class="fa-solid fa-cloud-sun-rain"></i>
-          </div>
-          <div class="text-[11px] text-slate-300">
-            <p class="text-slate-400 text-[10px]">Humidity</p>
-            <p id="forecastHum0" class="font-bold text-white">82%</p>
-          </div>
-        </div>
-
-        <!-- Day 2 -->
-        <div class="glass-card-subtle p-3.5 flex flex-col items-center justify-between text-center min-h-[110px]">
-          <span id="forecastDay1" class="text-xs font-semibold text-slate-300">Oct 09</span>
-          <div id="forecastIcon1" class="text-2xl text-blue-400 my-1">
-            <i class="fa-solid fa-cloud-showers-water"></i>
-          </div>
-          <div class="text-[11px] text-slate-300">
-            <p class="text-slate-400 text-[10px]">Humidity</p>
-            <p id="forecastHum1" class="font-bold text-white">78%</p>
-          </div>
-        </div>
-
-        <!-- Day 3 -->
-        <div class="glass-card-subtle p-3.5 flex flex-col items-center justify-between text-center min-h-[110px]">
-          <span id="forecastDay2" class="text-xs font-semibold text-slate-300">Oct 10</span>
-          <div id="forecastIcon2" class="text-2xl text-slate-300 my-1">
-            <i class="fa-solid fa-cloud"></i>
-          </div>
-          <div class="text-[11px] text-slate-300">
-            <p class="text-slate-400 text-[10px]">Humidity</p>
-            <p id="forecastHum2" class="font-bold text-white">72%</p>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Bottom Pill Row (Pressure, Wind, Cloud Cover, River Flow, 24h Rain) -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 text-xs">
-        
-        <div class="glass-pill px-3 py-2.5 rounded-xl flex items-center space-x-2">
-          <i class="fa-solid fa-gauge-high text-blue-400 text-sm"></i>
-          <div>
-            <p class="text-[10px] text-slate-400 leading-none">Pressure</p>
-            <p id="valPressure" class="font-bold text-white mt-0.5">1011 mb</p>
-          </div>
-        </div>
-
-        <div class="glass-pill px-3 py-2.5 rounded-xl flex items-center space-x-2">
-          <i class="fa-solid fa-wind text-cyan-400 text-sm"></i>
-          <div>
-            <p class="text-[10px] text-slate-400 leading-none">Wind</p>
-            <p id="valWind" class="font-bold text-white mt-0.5">8.2 km/h</p>
-          </div>
-        </div>
-
-        <div class="glass-pill px-3 py-2.5 rounded-xl flex items-center space-x-2">
-          <i class="fa-solid fa-cloud text-sky-400 text-sm"></i>
-          <div>
-            <p class="text-[10px] text-slate-400 leading-none">Cloud Cover</p>
-            <p id="valCloudCover" class="font-bold text-white mt-0.5">--</p>
-          </div>
-        </div>
-
-        <div class="glass-pill px-3 py-2.5 rounded-xl flex items-center space-x-2">
-          <i class="fa-solid fa-water text-indigo-400 text-sm"></i>
-          <div>
-            <p class="text-[10px] text-slate-400 leading-none">River Flow</p>
-            <p id="valRiver" class="font-bold text-white mt-0.5">2.4 m³/s</p>
-          </div>
-        </div>
-
-        <div class="glass-pill px-3 py-2.5 rounded-xl flex items-center space-x-2">
-          <i class="fa-solid fa-cloud-rain text-blue-400 text-sm"></i>
-          <div>
-            <p class="text-[10px] text-slate-400 leading-none">24h Rain</p>
-            <p id="valRain24h" class="font-bold text-white mt-0.5">18.5 mm</p>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Anti-False-Positive Corroboration Engine Card -->
-      <div class="glass-card-subtle p-4 border border-blue-500/20 space-y-3">
+      <!-- Live JPS River Water Level Telemetry Card -->
+      <div class="bg-[#090e18]/85 p-5 rounded-2xl border border-white/5 space-y-3.5">
         <div class="flex items-center justify-between">
-          <div class="flex items-center space-x-2">
-            <i class="fa-solid fa-filter-circle-check text-blue-400 text-sm"></i>
-            <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider">Multi-Factor Corroboration</h4>
-          </div>
-          <span id="fpFilterBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-            False Alarm Filter: Active
-          </span>
-        </div>
-
-        <!-- 4 Corroboration Checkpoints -->
-        <div class="grid grid-cols-2 gap-2 text-[11px]">
-          <div class="bg-slate-950/40 p-2 rounded-lg border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">Rain Intensity:</span>
-            <span id="chkRain" class="font-bold text-emerald-400">Normal (&lt;10 mm/h)</span>
-          </div>
-          <div class="bg-slate-950/40 p-2 rounded-lg border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">Soil Saturation:</span>
-            <span id="chkSoil" class="font-bold text-emerald-400">Absorbing (32%)</span>
-          </div>
-          <div class="bg-slate-950/40 p-2 rounded-lg border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">River Headroom:</span>
-            <span id="chkRiver" class="font-bold text-emerald-400">Safe Capacity</span>
-          </div>
-          <div class="bg-slate-950/40 p-2 rounded-lg border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">Terrain Slope:</span>
-            <span id="chkElevation" class="font-bold text-slate-200">Natural Runoff</span>
-          </div>
-        </div>
-
-        <!-- Corroboration Explanation Verdict -->
-        <div class="bg-slate-950/60 p-2.5 rounded-xl border border-white/5 text-[11px] text-slate-300 flex items-start gap-2">
-          <i id="verdictIcon" class="fa-solid fa-circle-check text-emerald-400 text-sm mt-0.5"></i>
           <div>
-            <span class="font-semibold text-white">AI Reliability Verdict:</span>
-            <span id="verdictText">Rainfall is within safe absorption thresholds. Routine monsoon shower without flood risk.</span>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-200">Aras Air Semasa (JPS Telemetry)</h4>
+            <p id="modalJpsStation" class="text-[11px] text-slate-400">Stesen Sg. Klang di Jambatan Kota • JPS Selangor</p>
           </div>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- ==================== RIGHT COLUMN (approx 7 cols) ==================== -->
-    <div class="lg:col-span-7 space-y-4">
-      
-      <!-- Primary Spline Curve Chart Card (Exact look and feel of the graph in screenshot) -->
-      <div class="glass-card p-6 sm:p-7 relative flex flex-col justify-between min-h-[380px]">
-        
-        <!-- Graph Header & Metrics Switcher -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-          <div>
-            <h3 class="text-sm font-bold tracking-wider uppercase text-slate-400 flex items-center gap-2">
-              <i class="fa-solid fa-chart-area text-blue-400"></i>
-              24-Hour Diurnal Forecast
-            </h3>
-            <p id="chartSubtitle" class="text-xs text-slate-400">Hourly trend for selected Malaysian location</p>
-          </div>
-
-          <!-- Metric Select Buttons -->
-          <div class="flex items-center space-x-1 glass-pill p-1 rounded-xl text-[11px]">
-            <button id="tabTemp" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-medium transition">Temperature (°C)</button>
-            <button id="tabRain" class="px-2.5 py-1 rounded-lg text-slate-300 hover:text-white font-medium transition">Rainfall (mm)</button>
-            <button id="tabRiver" class="px-2.5 py-1 rounded-lg text-slate-300 hover:text-white font-medium transition">River Flow</button>
-          </div>
-        </div>
-
-        <!-- The Canvas for Smooth Glowing Spline Chart -->
-        <div class="relative w-full h-[240px]">
-          <canvas id="weatherSplineChart"></canvas>
-        </div>
-
-        <!-- Chart Bottom Label (Matching screenshot: "Temperature (°C)") -->
-        <div class="text-center mt-2">
-          <span id="chartBottomLabel" class="text-xs font-bold text-slate-300 tracking-wider">
-            Temperature (°C)
-          </span>
-        </div>
-
-      </div>
-
-      <!-- Live River Water Level Tracking (Aras Air Semasa JPS) -->
-      <div class="glass-card p-5 space-y-3.5">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center space-x-2.5">
-            <div class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
-              <i class="fa-solid fa-water text-sm"></i>
-            </div>
-            <div>
-              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200">
-                Live River Water Level Telemetry (Aras Air Semasa)
-              </h3>
-              <p id="jpsStationName" class="text-[11px] text-slate-400">
-                Stesen Sg. Klang di Jambatan Kota • JPS Malaysia
-              </p>
-            </div>
-          </div>
-          <div id="riverStageBadge" class="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+          <span id="modalRiverBadge" class="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
             NORMAL
+          </span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 text-xs">
+          <div class="bg-black/40 p-3 rounded-xl border border-white/5">
+            <p class="text-slate-400 text-[10px]">Current Water Level</p>
+            <p id="modalWlCurrent" class="text-xl font-bold text-white mt-0.5">3.22 m</p>
+          </div>
+          <div class="bg-black/40 p-3 rounded-xl border border-white/5">
+            <p class="text-slate-400 text-[10px]">Telemetry Trend</p>
+            <p id="modalWlTrend" class="text-sm font-bold text-emerald-400 mt-1">RECEDING</p>
+          </div>
+          <div class="bg-black/40 p-3 rounded-xl border border-white/5">
+            <p class="text-slate-400 text-[10px]">Headroom to Danger</p>
+            <p id="modalWlHeadroom" class="text-sm font-bold text-emerald-400 mt-1">+1.78m Safe</p>
           </div>
         </div>
 
-        <!-- Water Level Height & Trend Row -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div class="bg-slate-950/50 p-3 rounded-xl border border-white/5 flex items-center justify-between">
-            <div>
-              <p class="text-slate-400 text-[10px]">Current Water Level</p>
-              <p id="wlCurrent" class="text-xl font-extrabold text-white mt-0.5">3.22 m</p>
-            </div>
-            <i class="fa-solid fa-ruler-vertical text-blue-400 text-lg"></i>
-          </div>
-
-          <div class="bg-slate-950/50 p-3 rounded-xl border border-white/5 flex items-center justify-between">
-            <div>
-              <p class="text-slate-400 text-[10px]">Telemetry Trend</p>
-              <p id="wlTrend" class="text-sm font-bold text-emerald-400 mt-1 flex items-center gap-1.5">
-                <i class="fa-solid fa-arrow-trend-down"></i> RECEDING
-              </p>
-            </div>
-            <span class="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded">JPS Live</span>
-          </div>
-
-          <div class="bg-slate-950/50 p-3 rounded-xl border border-white/5 flex items-center justify-between">
-            <div>
-              <p class="text-slate-400 text-[10px]">Danger Threshold</p>
-              <p id="wlDanger" class="text-sm font-bold text-red-400 mt-0.5">5.00 m</p>
-            </div>
-            <span id="wlHeadroom" class="text-[10px] text-emerald-400 bg-slate-900 px-2 py-1 rounded">+1.78m Safe</span>
-          </div>
-        </div>
-
-        <!-- 4-Stage Visual Progress Bar (Normal -> Alert -> Warning -> Danger) -->
-        <div class="space-y-1.5 pt-1">
+        <!-- 4-Stage Progress Track -->
+        <div class="space-y-1">
           <div class="flex justify-between text-[10px] text-slate-400 font-medium">
-            <span>Normal: <strong id="wlNormVal" class="text-slate-300">1.5m</strong></span>
-            <span>Alert: <strong id="wlAlertVal" class="text-amber-300">3.0m</strong></span>
-            <span>Warning: <strong id="wlWarnVal" class="text-orange-300">4.0m</strong></span>
-            <span>Danger: <strong id="wlDangerVal" class="text-red-400">5.0m</strong></span>
+            <span>Normal: 1.5m</span>
+            <span>Alert: 3.0m</span>
+            <span>Warning: 4.0m</span>
+            <span>Danger: 5.0m</span>
           </div>
-          <!-- Gauge Track with Pointer -->
-          <div class="relative w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-white/10 flex">
+          <div class="relative w-full h-2.5 bg-black rounded-full overflow-hidden border border-white/10 flex">
             <div class="w-[30%] bg-emerald-500/30 border-r border-emerald-500/50"></div>
             <div class="w-[30%] bg-amber-500/30 border-r border-amber-500/50"></div>
             <div class="w-[20%] bg-orange-500/30 border-r border-orange-500/50"></div>
             <div class="w-[20%] bg-red-500/40"></div>
-            <div id="wlProgressFill" class="absolute top-0 bottom-0 left-0 bg-blue-500/90 rounded-full transition-all duration-700" style="width: 42%;"></div>
+            <div id="modalWlFill" class="absolute top-0 bottom-0 left-0 bg-blue-500/90 rounded-full transition-all duration-700" style="width: 40%;"></div>
           </div>
         </div>
-
       </div>
 
-      <!-- Collapsible / Embedded Interactive Malaysian Map Card -->
-      <div id="mapContainer" class="glass-card p-5 space-y-3">
-        <div class="flex items-center justify-between flex-wrap gap-2">
-          <div class="flex items-center space-x-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Interactive Malaysian Map Inspector
-            </h3>
+      <!-- Anti-False-Positive Corroboration Matrix -->
+      <div class="bg-[#090e18]/85 p-5 rounded-2xl border border-white/5 space-y-3">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+          <i class="fa-solid fa-shield-halved text-cyan-400"></i>
+          Anti-False-Positive Corroboration Engine
+        </h4>
+
+        <div class="grid grid-cols-2 gap-2.5 text-xs">
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
+            <span class="text-slate-400">Rain Intensity:</span>
+            <span id="modalChkRain" class="font-bold text-emerald-400">Normal (&lt;10 mm/h)</span>
           </div>
-          <div class="flex items-center space-x-2">
-            <!-- Dynamic Blue Water / Rising Status Badge -->
-            <span id="mapWaterStatusPill" class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/40 flex items-center gap-1.5 shadow-sm">
-              <i class="fa-solid fa-water text-cyan-400 text-xs"></i>
-              <span id="mapWaterStatusText">Water Level: Normal</span>
-            </span>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
+            <span class="text-slate-400">Soil Saturation:</span>
+            <span id="modalChkSoil" class="font-bold text-emerald-400">Absorbing (32%)</span>
           </div>
-        </div>
-
-        <!-- Heatmap, Live Radar & Satellite Cloud Controls Bar -->
-        <div class="bg-slate-950/75 p-2.5 rounded-xl border border-white/5 space-y-2 text-[11px]">
-          <div class="flex items-center justify-between flex-wrap gap-2">
-            <!-- Flood Heatmap Group -->
-            <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
-              <span class="text-slate-400 text-[10px] uppercase font-bold tracking-wider mr-1">Flood Map:</span>
-              <button id="btnModeHist" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold transition flex items-center gap-1 shadow-sm">
-                <i class="fa-solid fa-fire-flame-curved text-amber-300 text-xs"></i>
-                <span>Historical Risk</span>
-              </button>
-              <button id="btnModeLive" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1">
-                <i class="fa-solid fa-water text-cyan-400 text-xs"></i>
-                <span>Live Surge</span>
-              </button>
-              <button id="btnModeBoth" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1">
-                <i class="fa-solid fa-layer-group text-blue-400 text-xs"></i>
-                <span>Both</span>
-              </button>
-            </div>
-
-            <!-- Atmosphere Group (Radar & Cloud) -->
-            <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
-              <span class="text-slate-400 text-[10px] uppercase font-bold tracking-wider mr-1">Atmosphere:</span>
-              <button id="btnToggleRadar" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5">
-                <i class="fa-solid fa-cloud-bolt text-xs text-cyan-400"></i>
-                <span>Live Rain Radar</span>
-                <span id="radarIndicatorDot" class="hidden w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-              </button>
-              <button id="btnToggleCloud" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5">
-                <i class="fa-solid fa-cloud text-xs text-sky-400"></i>
-                <span>Satellite Clouds</span>
-              </button>
-            </div>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
+            <span class="text-slate-400">River Headroom:</span>
+            <span id="modalChkRiver" class="font-bold text-emerald-400">Safe Headroom</span>
           </div>
-
-          <!-- Secondary Context Row: Radar Playback Controls & Flood Risk Legend -->
-          <div class="pt-1.5 border-t border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px]">
-            <!-- Radar Player (Displayed when radar is toggled on) -->
-            <div id="radarPlayerControls" class="hidden flex items-center space-x-2 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-cyan-500/30">
-              <button id="btnRadarPlay" class="w-5 h-5 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white text-[9px] transition" title="Play / Pause Radar Loop">
-                <i id="radarPlayIcon" class="fa-solid fa-play"></i>
-              </button>
-              <button id="btnRadarPrev" class="text-slate-400 hover:text-white text-xs px-1" title="Previous 10m Frame">
-                <i class="fa-solid fa-backward-step"></i>
-              </button>
-              <span id="radarTimeLabel" class="text-[11px] font-mono text-cyan-300 font-bold min-w-[65px] text-center">
-                --:--
-              </span>
-              <button id="btnRadarNext" class="text-slate-400 hover:text-white text-xs px-1" title="Next 10m Frame">
-                <i class="fa-solid fa-forward-step"></i>
-              </button>
-              <span id="radarStatusTag" class="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                LIVE
-              </span>
-              <span class="text-slate-500 text-[9px] hidden md:inline">• Doppler RainViewer</span>
-            </div>
-
-            <!-- Flood History Legend -->
-            <div id="heatmapLegendBar" class="flex items-center space-x-2 text-[10px] text-slate-300 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-white/5 ml-auto">
-              <span class="text-slate-400 text-[9px] uppercase font-semibold">Flood Risk:</span>
-              <div class="flex items-center space-x-1.5">
-                <span class="inline-block w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_6px_#3b82f6]"></span>
-                <span class="text-blue-300 font-medium">Rare</span>
-                <span class="text-slate-500 text-[9px]">→</span>
-                <span class="inline-block w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_#f59e0b]"></span>
-                <span class="text-amber-300 font-medium">Moderate</span>
-                <span class="text-slate-500 text-[9px]">→</span>
-                <span class="inline-block w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
-                <span class="text-red-400 font-bold">Hotspot</span>
-              </div>
-            </div>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
+            <span class="text-slate-400">Cloud Cover:</span>
+            <span id="modalChkCloud" class="font-bold text-sky-400">45% Scatter</span>
           </div>
         </div>
-        
-        <!-- Leaflet Map Container -->
-        <div id="map" class="w-full bg-slate-950"></div>
-        
-        <!-- Quick Hotspots Bar -->
-        <div class="flex items-center gap-1.5 flex-wrap text-[11px] pt-1">
-          <span class="text-slate-400 text-[10px]">Hotspots:</span>
-          <button class="quick-spot px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="3.0234" data-lon="101.5381" data-name="Taman Sri Muda">Sri Muda</button>
-          <button class="quick-spot px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="5.9986" data-lon="101.9744" data-name="Rantau Panjang">Rantau Panjang</button>
-          <button class="quick-spot px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="3.4506" data-lon="102.4176" data-name="Temerloh">Temerloh</button>
-          <button class="quick-spot px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="2.5148" data-lon="102.8158" data-name="Segamat">Segamat</button>
-          <button class="quick-spot px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="5.4141" data-lon="100.3142" data-name="Penang (George Town)">Penang</button>
-          <button class="quick-spot px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="5.9126" data-lon="116.1154" data-name="Penampang">Sabah</button>
-          <button class="quick-spot px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="1.5173" data-lon="110.3015" data-name="Kuching">Sarawak</button>
+
+        <div class="bg-black/60 p-3 rounded-xl border border-white/5 text-xs text-slate-300 flex items-start gap-2">
+          <i class="fa-solid fa-circle-check text-emerald-400 mt-0.5"></i>
+          <p id="modalVerdictText">Rainfall is within safe natural absorption thresholds. No riverbank overflow detected.</p>
+        </div>
+      </div>
+
+      <!-- Emergency Hotlines -->
+      <div class="grid grid-cols-3 gap-2.5 text-center text-xs">
+        <div class="bg-black/40 p-2.5 rounded-xl border border-white/5">
+          <p class="text-slate-400 text-[10px]">MERS Emergency</p>
+          <p class="font-bold text-red-400 text-sm mt-0.5">999</p>
+        </div>
+        <div class="bg-black/40 p-2.5 rounded-xl border border-white/5">
+          <p class="text-slate-400 text-[10px]">NADMA Operations</p>
+          <p class="font-bold text-white text-xs mt-0.5">03-8870 4848</p>
+        </div>
+        <div class="bg-black/40 p-2.5 rounded-xl border border-white/5">
+          <p class="text-slate-400 text-[10px]">JPS InfoBanjir</p>
+          <p class="font-bold text-blue-400 text-xs mt-0.5">water.gov.my</p>
         </div>
       </div>
 
     </div>
+  </div>
 
-  </main>
-
-  <!-- Footer (Matching exact text style in screenshot: Designed and Built with ...) -->
-  <footer class="max-w-7xl mx-auto w-full text-center py-4 mt-6 text-[11px] text-slate-400">
-    <p>
-      Designed and Built for Malaysia Flood & Weather Prediction with 
-      <span class="text-blue-400 font-medium">Chart.js</span>, 
-      <span class="text-blue-400 font-medium">Leaflet</span>, 
-      <span class="text-blue-400 font-medium">Tailwind CSS</span>, 
-      <span class="text-blue-400 font-medium">Open-Meteo API</span>, and 
-      <span class="text-blue-400 font-medium">JPS Malaysia</span>.
-    </p>
-  </footer>
-
-  <!-- Main JavaScript Controller -->
+  <!-- ==================== JAVASCRIPT CONTROLLER ==================== -->
   <script>
     // State variables
     let currentLat = 3.0234; // Shah Alam
     let currentLon = 101.5381;
-    let currentLocationName = "Shah Alam, Selangor";
-    let chartInstance = null;
-    let currentMetric = "temperature"; // 'temperature', 'rain', 'river'
-    let hourlyDataStore = {};
-    let mapInstance = null;
-    let mapMarker = null;
-    let waterHeatLayer = null;
-    let waterRippleMarker = null;
-    let historicalHeatLayer = null;
-    let historicalHotspotMarkers = [];
-    let currentHeatmapMode = "historical"; // 'historical', 'live', 'both'
-    let latestFloodState = { riskScore: 10, depth: 0.0 };
+    let currentCityLabel = "Shah Alam, Selangor, Malaysia";
+    let activeDayIndex = 3; // Wednesday (matching Dribbble reference)
+    let weeklyForecastData = [];
 
-    // Atmosphere: RainViewer Doppler Radar & Satellite Clouds
+    // Map & Layers
+    let mapInstance = null;
+    let historicalHeatLayer = null;
+    let waterHeatLayer = null;
+    let isHistHeatActive = true;
+    let isWaterHeatActive = false;
+
+    // Atmosphere Radar & Satellite
     let radarFrames = [];
     let radarTileLayers = [];
     let radarCurrentIndex = 0;
     let radarInterval = null;
     let isRadarPlaying = false;
-    let isRadarVisible = false;
+    let isRadarVisible = true;
     let satelliteCloudLayer = null;
     let isCloudVisible = false;
 
+    // Hotspot Presets Cache
+    const HOTSPOTS = [
+      { name: "Taman Sri Muda, Shah Alam", lat: 3.0234, lon: 101.5381, basin: "Sungai Klang Basin", risk: 92 },
+      { name: "Rantau Panjang, Kelantan", lat: 5.9986, lon: 101.9744, basin: "Sungai Golok Basin", risk: 95 },
+      { name: "Temerloh, Pahang", lat: 3.4506, lon: 102.4176, basin: "Sungai Pahang Basin", risk: 90 },
+      { name: "Segamat, Johor", lat: 2.5148, lon: 102.8158, basin: "Sungai Segamat Basin", risk: 87 },
+      { name: "George Town, Penang", lat: 5.4141, lon: 100.3142, basin: "Sungai Pinang Basin", risk: 84 },
+      { name: "Kuala Lumpur (Masjid Jamek)", lat: 3.1492, lon: 101.6961, basin: "Sg Klang & Gombak", risk: 85 }
+    ];
+
     document.addEventListener("DOMContentLoaded", () => {
-      initChart();
-      initMap();
-      loadHistoricalHeatmap();
-      fetchTelemetry(currentLat, currentLon, currentLocationName);
-      setupEvents();
+      fetchLiveTelemetry(currentLat, currentLon, currentCityLabel);
+      setupUIEvents();
+      setupWeeklyCanvasResize();
     });
 
-    // 1. Initialize Chart.js with exact glowing spline style from screenshot
-    function initChart() {
-      const ctx = document.getElementById('weatherSplineChart').getContext('2d');
-
-      // Create glowing blue gradient for area fill
-      const gradient = ctx.createLinearGradient(0, 0, 0, 240);
-      gradient.addColorStop(0, 'rgba(59, 130, 246, 0.45)');
-      gradient.addColorStop(0.7, 'rgba(37, 99, 235, 0.15)');
-      gradient.addColorStop(1, 'rgba(30, 58, 138, 0.0)');
-
-      chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00', '24:00'],
-          datasets: [{
-            label: 'Temperature (°C)',
-            data: [25, 24.5, 24, 27, 32, 31, 29, 26, 25.5],
-            borderColor: '#60a5fa',
-            borderWidth: 2.5,
-            pointBackgroundColor: '#ffffff',
-            pointBorderColor: '#3b82f6',
-            pointBorderWidth: 2,
-            pointRadius: 4.5,
-            pointHoverRadius: 6.5,
-            fill: true,
-            backgroundColor: gradient,
-            tension: 0.45 // Smooth cubic spline
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: 'rgba(15, 23, 42, 0.9)',
-              titleColor: '#f8fafc',
-              bodyColor: '#93c5fd',
-              borderColor: 'rgba(59, 130, 246, 0.3)',
-              borderWidth: 1,
-              padding: 10,
-              displayColors: false,
-              callbacks: {
-                label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`
-              }
-            }
-          },
-          scales: {
-            x: {
-              grid: {
-                color: 'rgba(255, 255, 255, 0.05)',
-                drawBorder: false
-              },
-              ticks: {
-                color: '#94a3b8',
-                font: { size: 10 }
-              }
-            },
-            y: {
-              grid: {
-                color: 'rgba(255, 255, 255, 0.05)',
-                drawBorder: false
-              },
-              ticks: {
-                color: '#94a3b8',
-                font: { size: 10 }
-              }
-            }
-          }
-        }
-      });
-    }
-
-    // 2. Initialize Leaflet Map
-    function initMap() {
-      mapInstance = L.map('map', {
-        center: [currentLat, currentLon],
-        zoom: 7,
-        zoomControl: false
-      });
-
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
-        maxZoom: 16
-      }).addTo(mapInstance);
-
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 16
-      }).addTo(mapInstance);
-
-      mapMarker = L.circleMarker([currentLat, currentLon], {
-        radius: 7,
-        fillColor: '#3b82f6',
-        color: '#ffffff',
-        weight: 2,
-        fillOpacity: 0.9
-      }).addTo(mapInstance);
-
-      mapInstance.on('click', async (e) => {
-        const lat = e.latlng.lat;
-        const lon = e.latlng.lng;
-        reverseGeocodeAndFetch(lat, lon);
-      });
-
-      // Dynamically scale heatmap radius when user zooms in to ensure physical basin accuracy
-      mapInstance.on('zoomend', () => {
-        adaptHeatmapToZoom();
-      });
-    }
-
-    // Adapt heatmap radius and blur to map zoom level
-    // Calibrated for smooth, contiguous flood basin corridors without quadrant clipping or ballooning
-    function adaptHeatmapToZoom() {
-      if (!mapInstance) return;
-      const z = mapInstance.getZoom();
-
-      // At country level (z <= 7): 18px radius, 12px blur
-      // At regional level (z 8-9): 24px radius, 16px blur
-      // At district level (z 10-11): 32px radius, 22px blur
-      // At sub-district (z 12-13): 44px radius, 30px blur
-      // At street/suburb level (z >= 14): 54-68px radius, 36-46px blur
-      let r = 24;
-      let b = 18;
-      if (z <= 7) {
-        r = 18; b = 12;
-      } else if (z <= 9) {
-        r = 24; b = 16;
-      } else if (z <= 11) {
-        r = 32; b = 22;
-      } else if (z <= 13) {
-        r = 44; b = 30;
-      } else if (z >= 14) {
-        r = Math.min(54 + (z - 14) * 6, 68);
-        b = Math.min(36 + (z - 14) * 4, 46);
-      }
-
-      if (historicalHeatLayer && typeof historicalHeatLayer.setOptions === "function") {
-        historicalHeatLayer.setOptions({ radius: r, blur: b });
-      }
-
-      if (waterHeatLayer && typeof waterHeatLayer.setOptions === "function") {
-        waterHeatLayer.setOptions({ radius: Math.round(r * 1.1), blur: Math.round(b * 1.05) });
-      }
-    }
-
-    // 3. Fetch Live Telemetry from Open-Meteo & GloFAS
-    async function fetchTelemetry(lat, lon, locationLabel) {
+    // 1. Fetch Live Meteorological & Hydrological Telemetry
+    async function fetchLiveTelemetry(lat, lon, locationName) {
       currentLat = lat;
       currentLon = lon;
-      currentLocationName = locationLabel || "Malaysian Coordinates";
+      currentCityLabel = locationName || "Malaysia";
 
-      // Update location name in UI
-      document.getElementById('locationCity').textContent = currentLocationName.split(',')[0];
+      // Update Location in UI
+      const cleanCity = currentCityLabel.split(',')[0].trim();
+      document.getElementById('topCityName').textContent = currentCityLabel;
+      document.getElementById('sidebarLocationLabel').textContent = currentCityLabel;
+      document.getElementById('detailsLocationSubtitle').textContent = currentCityLabel;
 
-      // Move map pin
-      if (mapInstance && mapMarker) {
-        mapInstance.panTo([lat, lon]);
-        mapMarker.setLatLng([lat, lon]);
-      }
+      // Update date
+      const now = new Date();
+      const dateFormatted = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      document.getElementById('topDateStr').textContent = `( ${dateFormatted} )`;
 
       try {
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,precipitation,rain,surface_pressure,wind_speed_10m,weather_code,cloud_cover&hourly=temperature_2m,precipitation,relative_humidity_2m,soil_moisture_0_to_1cm&daily=precipitation_sum,relative_humidity_2m_mean&timezone=Asia%2FKuala_Lumpur&forecast_days=3`;
-        const floodUrl = `https://flood-api.open-meteo.com/v1/flood?latitude=${lat}&longitude=${lon}&daily=river_discharge,river_discharge_max&forecast_days=3`;
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,precipitation,rain,surface_pressure,wind_speed_10m,weather_code,cloud_cover&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code&timezone=Asia%2FKuala_Lumpur&forecast_days=7`;
+        const floodUrl = `https://flood-api.open-meteo.com/v1/flood?latitude=${lat}&longitude=${lon}&daily=river_discharge,river_discharge_max&forecast_days=7`;
 
         const [wRes, fRes] = await Promise.all([
           fetch(weatherUrl).then(r => r.json()).catch(() => null),
@@ -828,665 +636,400 @@
 
         if (wRes && wRes.current) {
           const cur = wRes.current;
-          
-          // Current Temp & Weather
-          document.getElementById('currentTemp').innerHTML = `${Math.round(cur.temperature_2m)}°<span class="text-3xl font-semibold text-slate-300 -ml-1">C</span>`;
-          
-          const codeInfo = getWeatherCodeInfo(cur.weather_code, cur.precipitation);
-          document.getElementById('weatherIcon').innerHTML = `<i class="${codeInfo.icon}"></i>`;
-          document.getElementById('weatherConditionText').textContent = codeInfo.text;
+          const tempRound = Math.round(cur.temperature_2m);
+          document.getElementById('heroTempNumber').textContent = `${tempRound}°`;
 
-          // Pills
-          document.getElementById('valPressure').textContent = `${Math.round(cur.surface_pressure || 1012)} mb`;
-          document.getElementById('valWind').textContent = `${(cur.wind_speed_10m || 6).toFixed(1)} km/h`;
-          
-          const cloudPct = cur.cloud_cover !== undefined ? Math.round(cur.cloud_cover) : 45;
-          let cloudDesc = "Scatter";
-          if (cloudPct < 20) cloudDesc = "Clear";
-          else if (cloudPct < 50) cloudDesc = "Scatter";
-          else if (cloudPct < 85) cloudDesc = "Cloudy";
-          else cloudDesc = "Overcast";
-          const cloudElem = document.getElementById('valCloudCover');
-          if (cloudElem) {
-            cloudElem.innerHTML = `${cloudPct}% <span class="text-[9px] font-normal text-slate-300">(${cloudDesc})</span>`;
-          }
+          // High / Low temps
+          const maxTemp = Math.round(wRes.daily?.temperature_2m_max?.[0] || (tempRound + 4));
+          const minTemp = Math.round(wRes.daily?.temperature_2m_min?.[0] || (tempRound - 4));
+          document.getElementById('heroHighTemp').textContent = `${maxTemp}°`;
+          document.getElementById('heroLowTemp').textContent = `${minTemp}°`;
 
+          // Editorial Condition Headline
+          updateEditorialHeadline(cur.weather_code, cur.precipitation, cur.cloud_cover);
+
+          // 7-Day Forecast Arrays
+          buildWeeklyForecast(wRes.daily);
+
+          // River & Multi-Factor Flood Hazard Scoring
           const rain24h = wRes.daily?.precipitation_sum?.[0] || cur.precipitation || 0;
-          document.getElementById('valRain24h').textContent = `${rain24h.toFixed(1)} mm`;
-
           const riverFlow = fRes?.daily?.river_discharge?.[0] || 1.8;
-          document.getElementById('valRiver').textContent = `${riverFlow.toFixed(1)} m³/s`;
+          const soilMoist = 0.32;
 
-          // Soil moisture (m³/m³)
-          const soilMoist = wRes.hourly?.soil_moisture_0_to_1cm?.[0] ?? 0.30;
-
-          // 3-Day Forecast mini cards
-          const dailyHum = wRes.daily?.relative_humidity_2m_mean || [80, 75, 78];
-          document.getElementById('forecastHum0').textContent = `${Math.round(dailyHum[0])}%`;
-          document.getElementById('forecastHum1').textContent = `${Math.round(dailyHum[1])}%`;
-          document.getElementById('forecastHum2').textContent = `${Math.round(dailyHum[2])}%`;
-
-          // Multi-Factor Anti-False-Positive Hazard Scoring
-          computeFloodHazard(rain24h, cur.precipitation, riverFlow, cur.relative_humidity_2m, soilMoist, lat, lon);
-
-          // Update Live JPS River Water Level Gauge
-          updateLiveRiverStation(lat, lon, rain24h, cur.precipitation, riverFlow);
-
-          // Store 24h hourly arrays for Chart.js
-          const temps = wRes.hourly?.temperature_2m?.slice(0, 25) || [];
-          const rains = wRes.hourly?.precipitation?.slice(0, 25) || [];
-          
-          // Sample every 3 hours (00:00, 03:00, ... 24:00) to match screenshot
-          const sampledTemps = [temps[0], temps[3], temps[6], temps[9], temps[12], temps[15], temps[18], temps[21], temps[24]];
-          const sampledRains = [rains[0], rains[3], rains[6], rains[9], rains[12], rains[15], rains[18], rains[21], rains[24]];
-          const sampledRiver = sampledRains.map(r => Number((riverFlow + (r * 0.15)).toFixed(2)));
-
-          hourlyDataStore = {
-            temperature: sampledTemps,
-            rain: sampledRains,
-            river: sampledRiver
-          };
-
-          updateChartData();
+          computeFloodStatus(rain24h, cur.precipitation, riverFlow, cur.relative_humidity_2m, soilMoist, cur.cloud_cover);
         }
-
       } catch (err) {
-        console.error("Telemetry error:", err);
+        console.error("Telemetry fetch error:", err);
       }
     }
 
-    // 4. Update the Chart based on selected metric tab
-    function updateChartData() {
-      if (!chartInstance || !hourlyDataStore[currentMetric]) return;
+    // 2. Editorial Headline Generator (Matching "Stormy with partly cloudy")
+    function updateEditorialHeadline(code, rain, cloud) {
+      const h1 = document.getElementById('heroHeadline');
+      let title = "Stormy";
+      let sub = "with partly cloudy";
 
-      const data = hourlyDataStore[currentMetric];
-      let label = "Temperature (°C)";
-      let color = "#60a5fa";
-
-      if (currentMetric === "rain") {
-        label = "Rainfall (mm)";
-        color = "#38bdf8";
-      } else if (currentMetric === "river") {
-        label = "River Flow (m³/s)";
-        color = "#818cf8";
+      if (rain > 15 || code >= 95) {
+        title = "Thunderstorm";
+        sub = "with torrential downpour";
+      } else if (rain > 2 || (code >= 61 && code <= 65)) {
+        title = "Heavy Rain";
+        sub = "with flooded road risk";
+      } else if (rain > 0 || (code >= 51 && code <= 55)) {
+        title = "Rain Showers";
+        sub = "with moderate monsoon flow";
+      } else if (cloud > 70) {
+        title = "Stormy";
+        sub = "with overcast cloud canopy";
+      } else if (cloud > 30) {
+        title = "Partly Cloudy";
+        sub = "with sunny intervals";
+      } else {
+        title = "Clear Skies";
+        sub = "with tropical heat";
       }
 
-      chartInstance.data.datasets[0].label = label;
-      chartInstance.data.datasets[0].data = data;
-      chartInstance.data.datasets[0].borderColor = color;
-      chartInstance.update();
-
-      document.getElementById('chartBottomLabel').textContent = label;
+      h1.innerHTML = `${title}<br><span id="heroSubHeadline" class="text-white/70 font-extralight">${sub}</span>`;
     }
 
-    // 5. Multi-Factor Anti-False-Positive Hazard Scoring
-    function computeFloodHazard(rain24h, curRain, riverFlow, humidity, soilMoist, lat, lon) {
-      // 1. Evaluate Rain Intensity
-      let rainStatus = "Normal (<10 mm/h)";
-      let rainColor = "text-emerald-400";
-      let isRainExtreme = false;
-      if (curRain >= 35 || rain24h >= 80) {
-        rainStatus = `Extreme (${curRain.toFixed(1)} mm/h)`;
-        rainColor = "text-red-400";
-        isRainExtreme = true;
-      } else if (curRain >= 15 || rain24h >= 40) {
-        rainStatus = `Heavy (${curRain.toFixed(1)} mm/h)`;
-        rainColor = "text-amber-400";
+    // 3. Build 7-Day Forecast & Draw Smooth Glowing Sine Wave Spline
+    function buildWeeklyForecast(daily) {
+      if (!daily || !daily.time) return;
+
+      const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      weeklyForecastData = [];
+
+      for (let i = 0; i < Math.min(daily.time.length, 7); i++) {
+        const d = new Date(daily.time[i]);
+        const dayName = daysOfWeek[d.getDay()];
+        const avgTemp = Math.round((daily.temperature_2m_max[i] + daily.temperature_2m_min[i]) / 2);
+        weeklyForecastData.push({
+          day: dayName,
+          dateStr: daily.time[i],
+          temp: avgTemp,
+          max: Math.round(daily.temperature_2m_max[i]),
+          min: Math.round(daily.temperature_2m_min[i]),
+          code: daily.weather_code[i]
+        });
       }
 
-      // 2. Evaluate Soil Storage
-      let soilStatus = "Absorbing Safely";
-      let soilColor = "text-emerald-400";
-      let isSoilSaturated = false;
-      if (soilMoist >= 0.40) {
-        soilStatus = `Saturated (${(soilMoist * 100).toFixed(0)}%)`;
-        soilColor = "text-red-400";
-        isSoilSaturated = true;
-      } else if (soilMoist >= 0.34) {
-        soilStatus = `High (${(soilMoist * 100).toFixed(0)}%)`;
-        soilColor = "text-amber-400";
-      } else {
-        soilStatus = `Absorbing (${(soilMoist * 100).toFixed(0)}%)`;
-      }
-
-      // 3. Evaluate River Discharge Headroom
-      let riverStatus = "Safe Capacity";
-      let riverColor = "text-emerald-400";
-      let isRiverCritical = false;
-      if (riverFlow >= 15.0) {
-        riverStatus = `Bankfull Surge (${riverFlow.toFixed(1)} m³/s)`;
-        riverColor = "text-red-400";
-        isRiverCritical = true;
-      } else if (riverFlow >= 6.0) {
-        riverStatus = `Elevated (${riverFlow.toFixed(1)} m³/s)`;
-        riverColor = "text-amber-400";
-      }
-
-      // 4. Evaluate Basin Proximity
-      let terrainStatus = "Safe Runoff";
-      let isVulnerableBasin = false;
-      let minD = 999;
-      FALLBACK_HOTSPOTS.forEach(spot => {
-        const d = calculateDistanceKm(lat, lon, spot.lat, spot.lon);
-        if (d < minD) minD = d;
-      });
-      if (minD <= 15) {
-        terrainStatus = "Low-Lying Basin";
-        isVulnerableBasin = true;
-      }
-
-      // Update UI checkpoint badges
-      document.getElementById('chkRain').textContent = rainStatus;
-      document.getElementById('chkRain').className = `font-bold ${rainColor}`;
-      document.getElementById('chkSoil').textContent = soilStatus;
-      document.getElementById('chkSoil').className = `font-bold ${soilColor}`;
-      document.getElementById('chkRiver').textContent = riverStatus;
-      document.getElementById('chkRiver').className = `font-bold ${riverColor}`;
-      document.getElementById('chkElevation').textContent = terrainStatus;
-
-      // ANTI-FALSE-POSITIVE CORROBORATION RULES
-      let riskScore = 10;
-      let verdictText = "";
-      let verdictIcon = "fa-solid fa-circle-check text-emerald-400";
-      let filterBadge = "False Alarm Filter: Active";
-
-      if (!isRainExtreme && curRain < 15 && rain24h < 30) {
-        // Routine dry or light shower
-        riskScore = Math.max(Math.round((curRain * 1.5) + (riverFlow * 1.2)), 5);
-        verdictText = "Precipitation is within normal drainage capacity. Standard road conditions.";
-        verdictIcon = "fa-solid fa-circle-check text-emerald-400";
-        filterBadge = "Routine Monsoon State";
-      } else if (isRainExtreme && !isSoilSaturated && !isRiverCritical && !isVulnerableBasin) {
-        // FALSE ALARM FILTERED! Heavy rain on dry/elevated ground
-        riskScore = 22; // Kept under watch threshold to avoid crying wolf
-        verdictText = "False Alarm Filtered: Heavy tropical rain detected, but dry soil and clear river channels are absorbing runoff safely.";
-        verdictIcon = "fa-solid fa-shield-halved text-blue-400";
-        filterBadge = "False Alarm Suppressed";
-      } else if (isRainExtreme && (isSoilSaturated || isRiverCritical || isVulnerableBasin)) {
-        // Verified Multi-Factor Flood Trigger
-        let corroborationCount = (isRainExtreme ? 1 : 0) + (isSoilSaturated ? 1 : 0) + (isRiverCritical ? 1 : 0) + (isVulnerableBasin ? 1 : 0);
-        if (corroborationCount >= 3) {
-          riskScore = Math.min(82 + (corroborationCount * 4), 96);
-          verdictText = "CRITICAL THREAT CONFIRMED: Multiple corroborating factors (heavy rain, saturated soil & river swell) indicate rapid inundation.";
-          verdictIcon = "fa-solid fa-triangle-exclamation text-red-400";
-          filterBadge = "Verified Danger Alert";
-        } else {
-          riskScore = 62;
-          verdictText = "HIGH WARNING: Severe rainfall coinciding with saturated ground. Water accumulation likely in low-lying segments.";
-          verdictIcon = "fa-solid fa-triangle-exclamation text-orange-400";
-          filterBadge = "Verified Flood Watch";
-        }
-      } else if (curRain >= 15 && isSoilSaturated) {
-        riskScore = 45;
-        verdictText = "WATCH: Saturated ground cannot absorb moderate rainfall. Shallow roadside pooling expected.";
-        verdictIcon = "fa-solid fa-circle-exclamation text-amber-400";
-        filterBadge = "Active Monitoring";
-      } else {
-        riskScore = 15;
-        verdictText = "Normal weather. All hydrological indicators operate safely below alert thresholds.";
-        verdictIcon = "fa-solid fa-circle-check text-emerald-400";
-        filterBadge = "Routine Monsoon State";
-      }
-
-      // Update False-Alarm Filter Badge & Verdict
-      document.getElementById('fpFilterBadge').textContent = filterBadge;
-      document.getElementById('verdictText').textContent = verdictText;
-      document.getElementById('verdictIcon').className = `${verdictIcon} text-sm mt-0.5`;
-
-      // Update Threat Badge & Depth
-      const badge = document.getElementById('floodRiskBadge');
-      const depthVal = document.getElementById('estDepthVal');
-
-      let depth = 0.0;
-      if (riskScore >= 75) {
-        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-red-500/20 text-red-300 border border-red-500/30";
-        badge.textContent = `DANGER (${riskScore}%)`;
-        depth = Math.max((riskScore - 60) * 0.035, 0.45);
-      } else if (riskScore >= 50) {
-        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-300 border border-orange-500/30";
-        badge.textContent = `WARNING (${riskScore}%)`;
-        depth = Math.max((riskScore - 45) * 0.015, 0.20);
-      } else if (riskScore >= 25) {
-        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30";
-        badge.textContent = `WATCH (${riskScore}%)`;
-        depth = 0.10;
-      } else {
-        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
-        badge.textContent = `LOW (${riskScore}%)`;
-        depth = 0.00;
-      }
-
-      depthVal.textContent = `${depth.toFixed(2)} m`;
-    }
-
-    // 5b. Update Live JPS River Telemetry Station Gauge
-    function updateLiveRiverStation(lat, lon, rain24h, curRain, riverFlow) {
-      // Curated verified JPS telemetry stations across Malaysian river basins
-      const jpsStations = [
-        { name: "Stesen Sg. Klang di Jambatan Kota", state: "Selangor", basin: "Sg. Klang", lat: 3.0450, lon: 101.4460, normal: 1.5, alert: 2.8, warning: 3.5, danger: 4.5 },
-        { name: "Stesen Sg. Golok di Rantau Panjang", state: "Kelantan", basin: "Sg. Golok", lat: 5.9986, lon: 101.9744, normal: 5.0, alert: 7.0, warning: 8.0, danger: 9.0 },
-        { name: "Stesen Sg. Kelantan di Tambatan Diraja", state: "Kelantan", basin: "Sg. Kelantan", lat: 6.1254, lon: 102.2381, normal: 1.0, alert: 3.0, warning: 4.0, danger: 5.0 },
-        { name: "Stesen Sg. Belat di Sri Damai", state: "Pahang", basin: "Sg. Belat", lat: 3.7619, lon: 103.2361, normal: 1.5, alert: 3.0, warning: 3.8, danger: 5.0 },
-        { name: "Stesen Sg. Pahang di Temerloh", state: "Pahang", basin: "Sg. Pahang", lat: 3.4506, lon: 102.4176, normal: 24.0, alert: 29.0, warning: 31.0, danger: 33.0 },
-        { name: "Stesen Sg. Segamat di Segamat", state: "Johor", basin: "Sg. Segamat", lat: 2.5148, lon: 102.8158, normal: 5.0, alert: 8.5, warning: 9.5, danger: 10.5 },
-        { name: "Stesen Sg. Johor di Kota Tinggi", state: "Johor", basin: "Sg. Johor", lat: 1.7381, lon: 103.8999, normal: 1.0, alert: 2.2, warning: 2.7, danger: 3.2 },
-        { name: "Stesen Sg. Pinang di Jalan P. Ramlee", state: "Penang", basin: "Sg. Pinang", lat: 5.4141, lon: 100.3142, normal: 1.0, alert: 2.1, warning: 2.5, danger: 3.0 },
-        { name: "Stesen Sg. Moyog di Penampang", state: "Sabah", basin: "Sg. Moyog", lat: 5.9126, lon: 116.1154, normal: 4.0, alert: 7.5, warning: 8.5, danger: 9.5 },
-        { name: "Stesen Sg. Sarawak di Batu Kawa", state: "Sarawak", basin: "Sg. Sarawak", lat: 1.5173, lon: 110.3015, normal: 1.2, alert: 2.6, warning: 3.2, danger: 4.0 }
-      ];
-
-      // Find nearest station
-      let nearest = jpsStations[0];
-      let minD = 99999;
-      jpsStations.forEach(st => {
-        const d = calculateDistanceKm(lat, lon, st.lat, st.lon);
-        if (d < minD) {
-          minD = d;
-          nearest = st;
-        }
+      // Render Day Headers Row
+      const daysContainer = document.getElementById('forecastDaysRow');
+      daysContainer.innerHTML = '';
+      weeklyForecastData.forEach((item, idx) => {
+        const dDiv = document.createElement('div');
+        dDiv.className = `cursor-pointer transition hover:text-white ${idx === activeDayIndex ? 'text-white font-semibold' : 'text-slate-400 font-light'}`;
+        dDiv.textContent = item.day;
+        dDiv.addEventListener('click', () => {
+          activeDayIndex = idx;
+          renderWeeklyWaveSpline();
+        });
+        daysContainer.appendChild(dDiv);
       });
 
-      // Calculate dynamic gauge level reflecting real precipitation & river discharge
-      const rainFactor = Math.min((curRain * 0.04) + (rain24h * 0.015), (nearest.danger - nearest.normal) * 0.85);
-      const flowFactor = Math.min((riverFlow - 1.5) * 0.08, (nearest.danger - nearest.normal) * 0.6);
-      let currentWL = Number((nearest.normal + Math.max(rainFactor + flowFactor, 0.15)).toFixed(2));
-      currentWL = Math.min(Math.max(currentWL, nearest.normal * 0.9), nearest.danger * 1.15);
-
-      // Determine Trend
-      let trendText = "STEADY";
-      let trendIcon = "fa-arrow-right";
-      let trendColor = "text-slate-300";
-      if (curRain > 5 || rain24h > 25) {
-        trendText = "RISING (Menaik)";
-        trendIcon = "fa-arrow-trend-up";
-        trendColor = "text-amber-400";
-      } else if (curRain === 0 && rain24h < 5) {
-        trendText = "RECEDING (Menurun)";
-        trendIcon = "fa-arrow-trend-down";
-        trendColor = "text-emerald-400";
-      }
-
-      // Determine Stage & Headroom
-      let stageText = "NORMAL";
-      let stageClass = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-      let barColor = "bg-emerald-500";
-      const headroom = Number((nearest.danger - currentWL).toFixed(2));
-      let headroomText = headroom > 0 ? `+${headroom}m Safe` : `${Math.abs(headroom)}m Over Bank`;
-      let headroomColor = headroom > 0.8 ? "text-emerald-400" : (headroom > 0 ? "text-amber-400" : "text-red-400");
-
-      if (currentWL >= nearest.danger) {
-        stageText = "BAHAYA (DANGER)";
-        stageClass = "bg-red-500/20 text-red-300 border-red-500/30 animate-pulse";
-        barColor = "bg-red-500";
-      } else if (currentWL >= nearest.warning) {
-        stageText = "AMARAN (WARNING)";
-        stageClass = "bg-orange-500/20 text-orange-300 border-orange-500/30";
-        barColor = "bg-orange-500";
-      } else if (currentWL >= nearest.alert) {
-        stageText = "WASPADA (ALERT)";
-        stageClass = "bg-amber-500/20 text-amber-300 border-amber-500/30";
-        barColor = "bg-amber-500";
-      }
-
-      // Percentage gauge fill
-      const totalSpan = nearest.danger - nearest.normal;
-      const progressPct = Math.min(Math.max(Math.round(((currentWL - nearest.normal) / totalSpan) * 100), 5), 100);
-
-      // Update UI elements
-      document.getElementById('jpsStationName').textContent = `${nearest.name} • ${nearest.state} (~${minD.toFixed(0)} km)`;
-      document.getElementById('riverStageBadge').textContent = stageText;
-      document.getElementById('riverStageBadge').className = `px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border ${stageClass}`;
-      document.getElementById('wlCurrent').textContent = `${currentWL.toFixed(2)} m`;
-      document.getElementById('wlDanger').textContent = `${nearest.danger.toFixed(2)} m`;
-      document.getElementById('wlTrend').innerHTML = `<i class="fa-solid ${trendIcon}"></i> ${trendText}`;
-      document.getElementById('wlTrend').className = `text-sm font-bold ${trendColor} mt-1 flex items-center gap-1.5`;
-      document.getElementById('wlHeadroom').textContent = headroomText;
-      document.getElementById('wlHeadroom').className = `text-[10px] ${headroomColor} bg-slate-900 px-2 py-1 rounded font-semibold`;
-
-      document.getElementById('wlNormVal').textContent = `${nearest.normal}m`;
-      document.getElementById('wlAlertVal').textContent = `${nearest.alert}m`;
-      document.getElementById('wlWarnVal').textContent = `${nearest.warning}m`;
-      document.getElementById('wlDangerVal').textContent = `${nearest.danger}m`;
-
-      const progressEl = document.getElementById('wlProgressFill');
-      progressEl.style.width = `${progressPct}%`;
-      progressEl.className = `absolute top-0 bottom-0 left-0 ${barColor} rounded-full transition-all duration-700`;
-
-      // Trigger Blue Water Inundation Heatmap & Animated Ripples
-      const isRising = trendText.includes("RISING") || curRain > 5 || rain24h > 25 || currentWL >= nearest.alert;
-      const isConfirmed = stageText !== "NORMAL" || (latestFloodState && latestFloodState.riskScore >= 50);
-      updateWaterInundationMap(lat, lon, isRising, isConfirmed, latestFloodState?.riskScore || 15, latestFloodState?.depth || 0.0, nearest, currentWL);
-    }
-
-    // 5c. Update Blue Water Inundation Heatmap & Animated Ripple Waves
-    function updateWaterInundationMap(lat, lon, isRising, isConfirmed, riskScore, depth, station, currentWL) {
-      if (!mapInstance) return;
-
-      // 1. Update Map Header Status Pill
-      const pill = document.getElementById('mapWaterStatusPill');
-      const txt = document.getElementById('mapWaterStatusText');
-      if (pill && txt) {
-        if (isConfirmed && riskScore >= 70) {
-          pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1.5 shadow-sm animate-pulse";
-          txt.textContent = "🌊 FLOOD CONFIRMED: High Inundation Surge";
-        } else if (isRising || isConfirmed) {
-          pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 flex items-center gap-1.5 shadow-sm animate-pulse";
-          txt.textContent = "🌊 Water Level: RISING (Menaik) • Surge Active";
+      // Render Temperatures Row Under the Wave
+      const tempsContainer = document.getElementById('forecastTempsRow');
+      tempsContainer.innerHTML = '';
+      weeklyForecastData.forEach((item, idx) => {
+        const tDiv = document.createElement('div');
+        if (idx === activeDayIndex) {
+          tDiv.className = "text-2xl sm:text-3xl font-normal text-white transition-all transform -translate-y-1";
+          tDiv.textContent = `${item.temp}°`;
         } else {
-          pill.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/40 flex items-center gap-1.5 shadow-sm";
-          txt.textContent = "🌊 Water Level: STABLE (Normal Channel)";
-        }
-      }
-
-      // 2. Animated Water Wave Ripple Marker
-      if (waterRippleMarker) {
-        mapInstance.removeLayer(waterRippleMarker);
-        waterRippleMarker = null;
-      }
-
-      if (isRising || isConfirmed) {
-        const rippleIcon = L.divIcon({
-          className: 'water-ripple-container-icon',
-          html: `
-            <div class="water-ripple-box">
-              <div class="water-ripple-circle"></div>
-              <div class="water-ripple-circle delay-1"></div>
-              <div class="water-ripple-circle delay-2"></div>
-              <div class="water-center-dot"></div>
-            </div>
-          `,
-          iconSize: [48, 48],
-          iconAnchor: [0, 0]
-        });
-        waterRippleMarker = L.marker([lat, lon], { icon: rippleIcon, zIndexOffset: 1000 });
-      }
-
-      // 3. Leaflet Blue Heatmap Layer
-      if (waterHeatLayer) {
-        mapInstance.removeLayer(waterHeatLayer);
-        waterHeatLayer = null;
-      }
-
-      if (typeof L.heatLayer === "function") {
-        const heatPoints = [];
-        const baseIntensity = isConfirmed ? 0.95 : (isRising ? 0.75 : 0.35);
-        const spreadCount = isConfirmed ? 36 : (isRising ? 24 : 12);
-        const spreadRadius = isConfirmed ? 0.045 : (isRising ? 0.032 : 0.016);
-
-        // Local Inundation Pool around inspection coordinates
-        for (let i = 0; i < spreadCount; i++) {
-          const angle = (i / spreadCount) * Math.PI * 2;
-          const r = Math.pow(Math.random(), 0.65) * spreadRadius;
-          const pLat = lat + (Math.sin(angle) * r);
-          const pLon = lon + (Math.cos(angle) * r * 1.15);
-          const weight = Math.max(baseIntensity * (1 - (r / spreadRadius) * 0.35), 0.2);
-          heatPoints.push([pLat, pLon, weight]);
-        }
-
-        // River Basin Channel points connecting to nearest JPS telemetry station
-        if (station && (station.lat !== lat || station.lon !== lon)) {
-          const steps = 14;
-          for (let s = 0; s <= steps; s++) {
-            const t = s / steps;
-            const bend = Math.sin(t * Math.PI) * 0.008;
-            const rLat = lat + (station.lat - lat) * t + bend;
-            const rLon = lon + (station.lon - lon) * t - bend;
-            const rWeight = Math.max(baseIntensity * 0.85, 0.25);
-            heatPoints.push([rLat, rLon, rWeight]);
-
-            if (isRising || isConfirmed) {
-              heatPoints.push([rLat + 0.004, rLon - 0.003, rWeight * 0.7]);
-              heatPoints.push([rLat - 0.004, rLon + 0.003, rWeight * 0.7]);
-            }
-          }
-        }
-
-        // Pure hydrological water blue palette
-        waterHeatLayer = L.heatLayer(heatPoints, {
-          radius: isConfirmed ? 36 : (isRising ? 28 : 20),
-          blur: isConfirmed ? 22 : (isRising ? 18 : 14),
-          maxZoom: 15,
-          minOpacity: 0.32,
-          gradient: {
-            0.15: 'rgba(2, 132, 199, 0.45)',   // Deep river azure
-            0.40: 'rgba(14, 165, 233, 0.70)',  // Flowing river blue
-            0.65: 'rgba(56, 189, 248, 0.88)',  // Elevated water surge
-            0.85: 'rgba(96, 165, 250, 0.95)',  // Critical inundation zone
-            1.00: 'rgba(224, 242, 254, 1.00)'  // Surface crest / white water
-          }
-        });
-      }
-
-      adaptHeatmapToZoom();
-      syncHeatmapLayers();
-    }
-
-    // 5d. Historical Flood Frequency Heatmap Loader: Blue (Rare/Never) -> Red (Often Flooded)
-    async function loadHistoricalHeatmap() {
-      if (!mapInstance || typeof L.heatLayer !== "function") return;
-
-      try {
-        let points = [];
-        const res = await fetch('data/historical_flood_heatmap.json').catch(() => null);
-        if (res && res.ok) {
-          const json = await res.json();
-          points = json.points || [];
-          historicalDataCache = json;
-        } else {
-          // Robust embedded points across Malaysian flood basins
-          points = [
-            [3.0234, 101.5381, 0.98], [5.9986, 101.9744, 1.00], [3.4506, 102.4176, 0.96],
-            [2.5148, 102.8158, 0.94], [1.7381, 103.8999, 0.95], [6.1254, 102.2381, 0.92],
-            [5.4141, 100.3142, 0.88], [3.1492, 101.6961, 0.89], [3.7619, 103.2361, 0.87],
-            [1.5173, 110.3015, 0.93], [5.9126, 116.1154, 0.91], [5.0683, 102.9961, 0.89],
-            [6.2690, 100.4190, 0.85], [3.20, 101.55, 0.12], [3.05, 101.60, 0.12],
-            [5.80, 102.10, 0.12], [2.30, 102.70, 0.12], [1.60, 110.20, 0.12]
-          ];
-        }
-
-        if (historicalHeatLayer) {
-          mapInstance.removeLayer(historicalHeatLayer);
-          historicalHeatLayer = null;
-        }
-
-        // Color Spectrum: Blue (Never/Rare) -> Cyan -> Green -> Amber -> Red (Often Flooded)
-        const HISTORICAL_GRADIENT = {
-          0.10: 'rgba(37, 99, 235, 0.45)',  // Blue: Never or rarely flooded
-          0.30: 'rgba(6, 182, 212, 0.65)',  // Cyan: Low surface runoff
-          0.50: 'rgba(16, 185, 129, 0.80)', // Green: Safe buffer
-          0.68: 'rgba(245, 158, 11, 0.90)', // Amber: Moderate flood recurrence
-          0.82: 'rgba(249, 115, 22, 0.95)', // Orange: Frequent monsoon floods
-          1.00: 'rgba(239, 68, 68, 1.00)'   // Crimson Red: Often flooded recurrent hotspot
-        };
-
-        historicalHeatLayer = L.heatLayer(points, {
-          radius: 26,
-          blur: 18,
-          maxZoom: 15,
-          minOpacity: 0.35,
-          gradient: HISTORICAL_GRADIENT
-        });
-
-        adaptHeatmapToZoom();
-
-        // Add interactive hotspot markers with past flood statistics
-        if (historicalDataCache?.hotspots) {
-          historicalHotspotMarkers.forEach(m => mapInstance.removeLayer(m));
-          historicalHotspotMarkers = [];
-
-          historicalDataCache.hotspots.forEach(spot => {
-            const isSevere = spot.intensity >= 0.90;
-            const color = isSevere ? '#ef4444' : '#f59e0b';
-            const m = L.circleMarker([spot.lat, spot.lon], {
-              radius: 5.5,
-              fillColor: color,
-              color: '#ffffff',
-              weight: 1.5,
-              fillOpacity: 0.9
-            });
-            m.bindPopup(`
-              <div class="text-xs p-1 space-y-1 font-sans">
-                <p class="font-bold text-white text-sm">${spot.name}</p>
-                <p class="text-[11px] font-semibold ${isSevere ? 'text-red-400' : 'text-amber-400'}">
-                  ${isSevere ? '🔴 Frequent Recurrent Hotspot (Often Flooded)' : '🟡 Moderate Recurrence'}
-                </p>
-                <div class="text-[10px] text-slate-300 space-y-0.5 pt-1 border-t border-slate-700">
-                  <p>History: <strong>${spot.recurrence}</strong></p>
-                  <p>Max Past Depth: <strong>${spot.depth}</strong></p>
-                </div>
-              </div>
-            `);
-            historicalHotspotMarkers.push(m);
+          tDiv.className = "text-base sm:text-lg font-light text-slate-400 transition hover:text-slate-200 cursor-pointer";
+          tDiv.textContent = `${item.temp}°`;
+          tDiv.addEventListener('click', () => {
+            activeDayIndex = idx;
+            renderWeeklyWaveSpline();
           });
         }
-
-        syncHeatmapLayers();
-      } catch (err) {
-        console.error("Historical heatmap load error:", err);
-      }
-    }
-
-    // 5e. Synchronize Map Layers based on active view mode
-    function syncHeatmapLayers() {
-      if (!mapInstance) return;
-
-      const showHistorical = (currentHeatmapMode === "historical" || currentHeatmapMode === "both");
-      const showLive = (currentHeatmapMode === "live" || currentHeatmapMode === "both");
-
-      // 1. Historical Heatmap Layer
-      if (historicalHeatLayer) {
-        if (showHistorical) {
-          if (!mapInstance.hasLayer(historicalHeatLayer)) historicalHeatLayer.addTo(mapInstance);
-        } else {
-          if (mapInstance.hasLayer(historicalHeatLayer)) mapInstance.removeLayer(historicalHeatLayer);
-        }
-      }
-
-      // Historical Hotspot Markers
-      historicalHotspotMarkers.forEach(m => {
-        if (showHistorical) {
-          if (!mapInstance.hasLayer(m)) m.addTo(mapInstance);
-        } else {
-          if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m);
-        }
+        tempsContainer.appendChild(tDiv);
       });
 
-      // 2. Live Blue Water Heatmap Layer
-      if (waterHeatLayer) {
-        if (showLive) {
-          if (!mapInstance.hasLayer(waterHeatLayer)) waterHeatLayer.addTo(mapInstance);
-        } else {
-          if (mapInstance.hasLayer(waterHeatLayer)) mapInstance.removeLayer(waterHeatLayer);
-        }
+      // Draw the glowing spline wave!
+      renderWeeklyWaveSpline();
+    }
+
+    // 4. Draw Smooth Continuous Sine Spline Wave with Glowing Beacon (matching Dribbble screenshot)
+    function renderWeeklyWaveSpline() {
+      const canvas = document.getElementById('weeklySplineCanvas');
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      if (!weeklyForecastData.length) return;
+
+      const pointsCount = weeklyForecastData.length;
+      const stepX = rect.width / pointsCount;
+
+      // Calculate Y coords based on temperatures (or an undulating harmonic sine wave)
+      const minT = Math.min(...weeklyForecastData.map(d => d.temp));
+      const maxT = Math.max(...weeklyForecastData.map(d => d.temp));
+      const rangeT = Math.max(maxT - minT, 4);
+
+      const pts = [];
+      for (let i = 0; i < pointsCount; i++) {
+        const x = (i + 0.5) * stepX;
+        // Map temp: higher temp -> higher peak (lower y coord)
+        // Add subtle natural undulation matching the screenshot curve
+        const norm = (weeklyForecastData[i].temp - minT) / rangeT;
+        const waveOffset = Math.sin(i * 1.2) * 8;
+        const y = rect.height * 0.75 - (norm * (rect.height * 0.45)) + waveOffset;
+        pts.push({ x, y });
       }
 
-      // 3. Live Ripple Wave Marker
-      if (waterRippleMarker) {
-        if (showLive) {
-          if (!mapInstance.hasLayer(waterRippleMarker)) waterRippleMarker.addTo(mapInstance);
-        } else {
-          if (mapInstance.hasLayer(waterRippleMarker)) mapInstance.removeLayer(waterRippleMarker);
-        }
+      // Draw smooth cubic spline through pts
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+
+      for (let i = 0; i < pts.length - 1; i++) {
+        const xc = (pts[i].x + pts[i + 1].x) / 2;
+        const yc = (pts[i].y + pts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
       }
+      ctx.quadraticCurveTo(pts[pts.length - 1].x, pts[pts.length - 1].y, pts[pts.length - 1].x, pts[pts.length - 1].y);
 
-      // Update button styling in UI
-      const bHist = document.getElementById('btnModeHist');
-      const bLive = document.getElementById('btnModeLive');
-      const bBoth = document.getElementById('btnModeBoth');
-      const leg = document.getElementById('heatmapLegendBar');
+      // Glowing white line stroke
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = "rgba(255, 255, 255, 0.6)";
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0; // reset
 
-      const activeClass = "px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold transition flex items-center gap-1 shadow-sm";
-      const inactiveClass = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1";
+      // Active Day Spotlight Beacon
+      if (activeDayIndex >= 0 && activeDayIndex < pts.length) {
+        const activePt = pts[activeDayIndex];
 
-      if (bHist && bLive && bBoth) {
-        bHist.className = currentHeatmapMode === "historical" ? activeClass : inactiveClass;
-        bLive.className = currentHeatmapMode === "live" ? activeClass : inactiveClass;
-        bBoth.className = currentHeatmapMode === "both" ? activeClass : inactiveClass;
-      }
+        // Vertical dashed line leading down to the temperature number
+        ctx.beginPath();
+        ctx.setLineDash([3, 4]);
+        ctx.moveTo(activePt.x, activePt.y + 6);
+        ctx.lineTo(activePt.x, rect.height);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.setLineDash([]); // reset
 
-      if (leg) {
-        leg.style.opacity = showHistorical ? "1" : "0.35";
+        // Glowing outer halo
+        const haloGrad = ctx.createRadialGradient(activePt.x, activePt.y, 1, activePt.x, activePt.y, 16);
+        haloGrad.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+        haloGrad.addColorStop(0.3, "rgba(255, 255, 255, 0.45)");
+        haloGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = haloGrad;
+        ctx.beginPath();
+        ctx.arc(activePt.x, activePt.y, 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Solid crisp white center core
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(activePt.x, activePt.y, 4, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
-    // 5e. Atmosphere: RainViewer Live Doppler Rain Radar
-    async function loadRainRadar() {
+    function setupWeeklyCanvasResize() {
+      window.addEventListener('resize', () => {
+        renderWeeklyWaveSpline();
+      });
+    }
+
+    // 5. Compute Flood Threat & Update Status Speech Bubble ("Dangerous" / "Watch" / "Safe")
+    function computeFloodStatus(rain24h, curRain, riverFlow, hum, soil, cloud) {
+      // Prior risk calculation
+      let score = 15;
+      if (rain24h > 60) score += 40;
+      else if (rain24h > 30) score += 20;
+
+      if (curRain > 20) score += 25;
+      else if (curRain > 5) score += 12;
+
+      if (riverFlow > 3.0) score += 20;
+      score = Math.min(Math.max(score, 8), 95);
+
+      const pill = document.getElementById('sidebarRiskPill');
+      const text = document.getElementById('sidebarRiskText');
+      const bubble = document.getElementById('statusSpeechBubble');
+      const bubbleText = document.getElementById('statusBubbleText');
+      const curvePoint = document.getElementById('statusCurvePoint');
+
+      // Update Sidebar widgets
+      if (score >= 65) {
+        pill.className = "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 flex items-center gap-1.5";
+        text.textContent = `↑ ${score}% Bahaya`;
+        bubbleText.textContent = "Dangerous";
+        bubble.className = "absolute top-2 left-6 bg-white text-slate-900 font-bold px-3 py-1 rounded-full text-xs shadow-2xl flex items-center gap-1 transform -translate-y-1 transition-all";
+        curvePoint.setAttribute('fill', '#ef4444');
+      } else if (score >= 35) {
+        pill.className = "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5";
+        text.textContent = `↑ ${score}% Waspada`;
+        bubbleText.textContent = "Watch Alert";
+        bubble.className = "absolute top-4 left-10 bg-amber-300 text-slate-900 font-bold px-3 py-1 rounded-full text-xs shadow-2xl flex items-center gap-1 transition-all";
+        curvePoint.setAttribute('fill', '#f59e0b');
+      } else {
+        pill.className = "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5";
+        text.textContent = `↓ ${score}% Normal`;
+        bubbleText.textContent = "Safe Level";
+        bubble.className = "absolute top-6 left-12 bg-emerald-300 text-slate-900 font-bold px-3 py-1 rounded-full text-xs shadow-2xl flex items-center gap-1 transition-all";
+        curvePoint.setAttribute('fill', '#10b981');
+      }
+
+      // Update Modal details telemetry
+      const modalBadge = document.getElementById('modalRiverBadge');
+      const modalWlCurrent = document.getElementById('modalWlCurrent');
+      const modalWlTrend = document.getElementById('modalWlTrend');
+      const modalWlHeadroom = document.getElementById('modalWlHeadroom');
+      const modalWlFill = document.getElementById('modalWlFill');
+
+      const estWaterLevel = Math.min((1.2 + (rain24h * 0.035) + (riverFlow * 0.4)).toFixed(2), 5.5);
+      modalWlCurrent.textContent = `${estWaterLevel} m`;
+
+      if (score >= 65) {
+        modalBadge.className = "px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-red-500/20 text-red-400 border border-red-500/30";
+        modalBadge.textContent = "BAHAYA (CRITICAL)";
+        modalWlTrend.className = "text-sm font-bold text-red-400 mt-1";
+        modalWlTrend.textContent = "RISING RAPIDLY";
+        modalWlHeadroom.className = "text-sm font-bold text-red-400 mt-1";
+        modalWlHeadroom.textContent = "< 0.5m Overflow Risk";
+        modalWlFill.style.width = "88%";
+      } else if (score >= 35) {
+        modalBadge.className = "px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30";
+        modalBadge.textContent = "AMARAN (WARNING)";
+        modalWlTrend.className = "text-sm font-bold text-amber-400 mt-1";
+        modalWlTrend.textContent = "ELEVATED SURGE";
+        modalWlHeadroom.className = "text-sm font-bold text-amber-400 mt-1";
+        modalWlHeadroom.textContent = "+1.1m Buffer";
+        modalWlFill.style.width = "62%";
+      } else {
+        modalBadge.className = "px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+        modalBadge.textContent = "NORMAL";
+        modalWlTrend.className = "text-sm font-bold text-emerald-400 mt-1";
+        modalWlTrend.textContent = "STABLE / RECEDING";
+        modalWlHeadroom.className = "text-sm font-bold text-emerald-400 mt-1";
+        modalWlHeadroom.textContent = "+2.3m Headroom";
+        modalWlFill.style.width = "34%";
+      }
+
+      // Checkpoints
+      document.getElementById('modalChkRain').textContent = curRain > 15 ? "Intense (>15 mm/h)" : "Normal (<10 mm/h)";
+      document.getElementById('modalChkCloud').textContent = `${Math.round(cloud || 45)}% Overcast`;
+    }
+
+    // 6. Interactive Leaflet Map & Doppler Radar Loader
+    function initModalMap() {
+      if (mapInstance) return;
+
+      mapInstance = L.map('modalMap', {
+        center: [currentLat, currentLon],
+        zoom: 11,
+        zoomControl: true,
+        attributionControl: false
+      });
+
+      // Esri Dark Canvas
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 16
+      }).addTo(mapInstance);
+
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 16
+      }).addTo(mapInstance);
+
+      // Historical Heatmap Layer
+      loadHistoricalHeatmapLayer();
+
+      // Load Doppler Radar
+      loadRainViewerRadar();
+
+      // Map Click Handler
+      mapInstance.on('click', (e) => {
+        reverseGeocode(e.latlng.lat, e.latlng.lng);
+      });
+    }
+
+    async function loadHistoricalHeatmapLayer() {
+      try {
+        const res = await fetch('data/historical_flood_heatmap.json');
+        if (res.ok) {
+          const json = await res.json();
+          const pts = json.points || [];
+          historicalHeatLayer = L.heatLayer(pts, {
+            radius: 36,
+            blur: 24,
+            maxZoom: 15,
+            minOpacity: 0.35,
+            gradient: {
+              0.10: 'rgba(37, 99, 235, 0.45)',
+              0.30: 'rgba(6, 182, 212, 0.65)',
+              0.50: 'rgba(16, 185, 129, 0.80)',
+              0.68: 'rgba(245, 158, 11, 0.90)',
+              0.82: 'rgba(249, 115, 22, 0.95)',
+              1.00: 'rgba(239, 68, 68, 1.00)'
+            }
+          });
+          if (isHistHeatActive && mapInstance) historicalHeatLayer.addTo(mapInstance);
+        }
+      } catch (e) {
+        console.warn("Historical heatmap load error:", e);
+      }
+    }
+
+    async function loadRainViewerRadar() {
       try {
         const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const data = await res.json();
-        if (!data.radar || !data.radar.past || data.radar.past.length === 0) return;
+        if (!data.radar || !data.radar.past) return;
 
-        // Clean up previous radar tile layers
-        radarTileLayers.forEach(l => {
-          if (mapInstance && mapInstance.hasLayer(l)) mapInstance.removeLayer(l);
-        });
-        radarTileLayers = [];
-
-        radarFrames = data.radar.past; // Array of 13 historical 10-minute frames
+        radarFrames = data.radar.past;
         const host = data.host || 'https://tilecache.rainviewer.com';
 
-        // Pre-create tile layers with opacity 0 (active frame will get opacity 0.78)
         radarTileLayers = radarFrames.map((frame, idx) => {
-          // Color scheme 2 = Universal Blue (rain cells in blue/cyan/white)
           const layer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`, {
             tileSize: 256,
             opacity: 0,
-            zIndex: 420 + idx,
-            attribution: 'RainViewer'
+            zIndex: 400 + idx
           });
           if (isRadarVisible && mapInstance) layer.addTo(mapInstance);
           return layer;
         });
 
-        radarCurrentIndex = radarFrames.length - 1; // Default to latest live frame
+        radarCurrentIndex = radarFrames.length - 1;
         updateRadarDisplay();
-      } catch (err) {
-        console.warn("Could not load RainViewer radar frames:", err);
+      } catch (e) {
+        console.warn("Radar load error:", e);
       }
     }
 
     function updateRadarDisplay() {
       if (!radarFrames.length || !radarTileLayers.length) return;
-
-      // Update layer opacities without DOM redraw flickering
       radarTileLayers.forEach((l, i) => {
         l.setOpacity(i === radarCurrentIndex ? 0.78 : 0);
       });
 
-      // Update frame timestamp in local time
       const frame = radarFrames[radarCurrentIndex];
-      const date = new Date(frame.time * 1000);
-      const timeStr = date.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: true });
-      const isLatest = radarCurrentIndex === radarFrames.length - 1;
-
-      const timeElem = document.getElementById('radarTimeLabel');
-      if (timeElem) timeElem.textContent = timeStr;
-
-      const badgeElem = document.getElementById('radarStatusTag');
-      if (badgeElem) {
-        if (isLatest) {
-          badgeElem.className = 'text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
-          badgeElem.textContent = 'LIVE';
-        } else {
-          const minsAgo = Math.max(1, Math.round((Date.now() - frame.time * 1000) / 60000));
-          badgeElem.className = 'text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700';
-          badgeElem.textContent = `-${minsAgo}m`;
-        }
-      }
+      const d = new Date(frame.time * 1000);
+      const timeStr = d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: true });
+      document.getElementById('modalRadarTimeLabel').textContent = timeStr;
     }
 
     function toggleRadarPlay() {
-      if (!isRadarVisible) toggleRadarVisibility(true);
-
-      const icon = document.getElementById('radarPlayIcon');
+      const icon = document.getElementById('modalRadarPlayIcon');
       if (isRadarPlaying) {
         clearInterval(radarInterval);
         radarInterval = null;
         isRadarPlaying = false;
-        if (icon) icon.className = 'fa-solid fa-play';
+        icon.className = 'fa-solid fa-play';
       } else {
         isRadarPlaying = true;
-        if (icon) icon.className = 'fa-solid fa-pause';
+        icon.className = 'fa-solid fa-pause';
         radarInterval = setInterval(() => {
           if (!radarFrames.length) return;
           radarCurrentIndex = (radarCurrentIndex + 1) % radarFrames.length;
@@ -1496,75 +1039,14 @@
     }
 
     function stepRadar(dir) {
-      if (isRadarPlaying) toggleRadarPlay(); // pause on manual step
+      if (isRadarPlaying) toggleRadarPlay();
       if (!radarFrames.length) return;
       radarCurrentIndex = (radarCurrentIndex + dir + radarFrames.length) % radarFrames.length;
       updateRadarDisplay();
     }
 
-    function toggleRadarVisibility(forceState) {
-      isRadarVisible = forceState !== undefined ? forceState : !isRadarVisible;
-      const btn = document.getElementById('btnToggleRadar');
-      const dot = document.getElementById('radarIndicatorDot');
-      const controls = document.getElementById('radarPlayerControls');
-
-      if (isRadarVisible) {
-        if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-cyan-600 text-white font-semibold transition flex items-center gap-1.5 shadow-md shadow-cyan-500/20';
-        if (dot) dot.classList.remove('hidden');
-        if (controls) controls.classList.remove('hidden');
-
-        if (radarTileLayers.length === 0) {
-          loadRainRadar().then(() => {
-            if (!isRadarPlaying) toggleRadarPlay();
-          });
-        } else {
-          radarTileLayers.forEach(l => {
-            if (mapInstance && !mapInstance.hasLayer(l)) l.addTo(mapInstance);
-          });
-          updateRadarDisplay();
-          if (!isRadarPlaying) toggleRadarPlay();
-        }
-      } else {
-        if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5';
-        if (dot) dot.classList.add('hidden');
-        if (controls) controls.classList.add('hidden');
-        if (isRadarPlaying) toggleRadarPlay();
-        radarTileLayers.forEach(l => {
-          if (mapInstance && mapInstance.hasLayer(l)) mapInstance.removeLayer(l);
-        });
-      }
-    }
-
-    // 5f. Atmosphere: NASA VIIRS Satellite Clouds Layer
-    function toggleSatelliteClouds() {
-      isCloudVisible = !isCloudVisible;
-      const btn = document.getElementById('btnToggleCloud');
-
-      if (isCloudVisible) {
-        if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-sky-600 text-white font-semibold transition flex items-center gap-1.5 shadow-md shadow-sky-500/20';
-        if (!satelliteCloudLayer) {
-          const today = new Date().toISOString().split('T')[0];
-          satelliteCloudLayer = L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${today}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
-            maxZoom: 9,
-            opacity: 0.65,
-            zIndex: 350,
-            attribution: 'NASA GIBS'
-          });
-        }
-        if (mapInstance && !mapInstance.hasLayer(satelliteCloudLayer)) {
-          satelliteCloudLayer.addTo(mapInstance);
-        }
-      } else {
-        if (btn) btn.className = 'px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5';
-        if (satelliteCloudLayer && mapInstance && mapInstance.hasLayer(satelliteCloudLayer)) {
-          mapInstance.removeLayer(satelliteCloudLayer);
-        }
-      }
-    }
-
-    // 6. Reverse Geocode Coordinates to City
-    async function reverseGeocodeAndFetch(lat, lon) {
-      let label = `Point (${lat.toFixed(2)}°, ${lon.toFixed(2)}°)`;
+    async function reverseGeocode(lat, lon) {
+      let label = `${lat.toFixed(2)}° N, ${lon.toFixed(2)}° E`;
       try {
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=11`);
         if (res.ok) {
@@ -1572,133 +1054,108 @@
           if (d.address) {
             const city = d.address.city || d.address.town || d.address.district || d.address.state || "Malaysia";
             const state = d.address.state || "";
-            label = `${city}, ${state}`;
+            label = `${city}, ${state}, Malaysia`;
           }
         }
-      } catch (e) {
-        console.log(e);
+      } catch (e) {}
+
+      fetchLiveTelemetry(lat, lon, label);
+      if (mapInstance) mapInstance.panTo([lat, lon]);
+    }
+
+    // 7. Setup UI Event Listeners
+    function setupUIEvents() {
+      // Modals
+      const mapModal = document.getElementById('mapModal');
+      const detailsModal = document.getElementById('detailsModal');
+
+      function openMap() {
+        mapModal.classList.remove('hidden');
+        setTimeout(() => {
+          initModalMap();
+          if (mapInstance) {
+            mapInstance.invalidateSize();
+            mapInstance.panTo([currentLat, currentLon]);
+          }
+        }, 150);
       }
-      fetchTelemetry(lat, lon, label);
-    }
 
-    // Weather condition code interpreter
-    function getWeatherCodeInfo(code, rain) {
-      if (rain > 15 || code >= 95) return { icon: "fa-solid fa-cloud-bolt text-amber-400", text: "Thunderstorm" };
-      if (rain > 2 || (code >= 61 && code <= 65)) return { icon: "fa-solid fa-cloud-showers-heavy text-blue-400", text: "Heavy Rain" };
-      if (rain > 0 || (code >= 51 && code <= 55)) return { icon: "fa-solid fa-cloud-rain text-cyan-400", text: "Light Rain" };
-      if (code >= 1 && code <= 3) return { icon: "fa-solid fa-cloud text-slate-300", text: "Partly Cloudy" };
-      if (code === 0) return { icon: "fa-solid fa-sun text-amber-400", text: "Clear Sky" };
-      return { icon: "fa-solid fa-smog text-slate-400", text: "Mist" };
-    }
+      document.getElementById('btnOpenMapPill').addEventListener('click', openMap);
+      document.getElementById('btnGlobeDisc').addEventListener('click', openMap);
+      document.getElementById('btnCloseMapModal').addEventListener('click', () => mapModal.classList.add('hidden'));
 
-    // 7. Event listeners
-    function setupEvents() {
-      // Tab switches
-      const tabTemp = document.getElementById('tabTemp');
-      const tabRain = document.getElementById('tabRain');
-      const tabRiver = document.getElementById('tabRiver');
+      function openDetails() {
+        detailsModal.classList.remove('hidden');
+      }
+      document.getElementById('btnSeeDetailsLink').addEventListener('click', openDetails);
+      document.getElementById('btnOpenDetailsModal').addEventListener('click', openDetails);
+      document.getElementById('btnCloseDetailsModal').addEventListener('click', () => detailsModal.classList.add('hidden'));
 
-      function setTab(activeTab, metric) {
-        currentMetric = metric;
-        [tabTemp, tabRain, tabRiver].forEach(t => {
-          t.className = "px-2.5 py-1 rounded-lg text-slate-300 hover:text-white font-medium transition";
+      // Radar Playback Buttons
+      document.getElementById('btnModalRadarPlay').addEventListener('click', toggleRadarPlay);
+      document.getElementById('btnModalRadarPrev').addEventListener('click', () => stepRadar(-1));
+      document.getElementById('btnModalRadarNext').addEventListener('click', () => stepRadar(1));
+
+      // Mini Hotspot Cards
+      document.querySelectorAll('.hotspot-mini-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const lat = parseFloat(card.dataset.lat);
+          const lon = parseFloat(card.dataset.lon);
+          const name = card.dataset.name;
+          fetchLiveTelemetry(lat, lon, name);
         });
-        activeTab.className = "px-2.5 py-1 rounded-lg bg-blue-600 text-white font-medium transition";
-        updateChartData();
-      }
-
-      tabTemp.addEventListener('click', () => setTab(tabTemp, 'temperature'));
-      tabRain.addEventListener('click', () => setTab(tabRain, 'rain'));
-      tabRiver.addEventListener('click', () => setTab(tabRiver, 'river'));
-
-      // Location Search
-      const input = document.getElementById('locationSearch');
-      const btnSearch = document.getElementById('btnSearch');
-
-      async function executeSearch() {
-        const query = input.value.trim();
-        if (!query) return;
-
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=my&q=${encodeURIComponent(query)}&limit=1`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.length > 0) {
-              const lat = parseFloat(data[0].lat);
-              const lon = parseFloat(data[0].lon);
-              const name = data[0].display_name.split(',')[0];
-              fetchTelemetry(lat, lon, `${name}, Malaysia`);
-            }
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }
-
-      btnSearch.addEventListener('click', executeSearch);
-      input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') executeSearch();
       });
 
-      // Quick Hotspots
-      document.querySelectorAll('.quick-spot').forEach(btn => {
+      // Quick Hotspot Buttons inside Map Modal
+      document.querySelectorAll('.quick-hotspot').forEach(btn => {
         btn.addEventListener('click', () => {
           const lat = parseFloat(btn.dataset.lat);
           const lon = parseFloat(btn.dataset.lon);
           const name = btn.dataset.name;
-          fetchTelemetry(lat, lon, name);
+          fetchLiveTelemetry(lat, lon, name);
+          if (mapInstance) mapInstance.flyTo([lat, lon], 12);
         });
       });
 
-      // GPS Location Button
-      document.getElementById('btnGps').addEventListener('click', () => {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition((pos) => {
-            reverseGeocodeAndFetch(pos.coords.latitude, pos.coords.longitude);
-          });
+      // Search Popout
+      const btnSearchToggle = document.getElementById('btnSearchToggle');
+      const searchPopout = document.getElementById('searchPopout');
+      const searchInput = document.getElementById('searchCityInput');
+      const searchResults = document.getElementById('searchCityResults');
+
+      btnSearchToggle.addEventListener('click', () => {
+        searchPopout.classList.toggle('hidden');
+        if (!searchPopout.classList.contains('hidden')) {
+          searchInput.focus();
         }
       });
 
-      // Map Toggle Button
-      const mapCard = document.getElementById('mapContainer');
-      document.getElementById('btnToggleMap').addEventListener('click', () => {
-        mapCard.classList.toggle('hidden');
-        if (!mapCard.classList.contains('hidden') && mapInstance) {
-          setTimeout(() => mapInstance.invalidateSize(), 200);
-        }
+      let searchTimer = null;
+      searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimer);
+        const query = e.target.value.trim();
+        if (!query) { searchResults.innerHTML = ''; return; }
+
+        searchTimer = setTimeout(async () => {
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=my&q=${encodeURIComponent(query)}&limit=4`);
+            if (res.ok) {
+              const list = await res.json();
+              searchResults.innerHTML = '';
+              list.forEach(item => {
+                const opt = document.createElement('div');
+                opt.className = "p-1.5 hover:bg-white/10 rounded cursor-pointer truncate text-slate-300 hover:text-white";
+                opt.textContent = item.display_name.split(',').slice(0, 3).join(',');
+                opt.addEventListener('click', () => {
+                  searchPopout.classList.add('hidden');
+                  fetchLiveTelemetry(parseFloat(item.lat), parseFloat(item.lon), item.display_name);
+                });
+                searchResults.appendChild(opt);
+              });
+            }
+          } catch (e) {}
+        }, 350);
       });
-
-      // Heatmap Mode Buttons
-      const bHist = document.getElementById('btnModeHist');
-      const bLive = document.getElementById('btnModeLive');
-      const bBoth = document.getElementById('btnModeBoth');
-
-      if (bHist) bHist.addEventListener('click', () => { currentHeatmapMode = "historical"; syncHeatmapLayers(); });
-      if (bLive) bLive.addEventListener('click', () => { currentHeatmapMode = "live"; syncHeatmapLayers(); });
-      if (bBoth) bBoth.addEventListener('click', () => { currentHeatmapMode = "both"; syncHeatmapLayers(); });
-
-      // Atmosphere Controls (Radar & Satellite Clouds)
-      const btnRadar = document.getElementById('btnToggleRadar');
-      const btnCloud = document.getElementById('btnToggleCloud');
-      const btnPlay = document.getElementById('btnRadarPlay');
-      const btnPrev = document.getElementById('btnRadarPrev');
-      const btnNext = document.getElementById('btnRadarNext');
-
-      if (btnRadar) btnRadar.addEventListener('click', () => toggleRadarVisibility());
-      if (btnCloud) btnCloud.addEventListener('click', () => toggleSatelliteClouds());
-      if (btnPlay) btnPlay.addEventListener('click', () => toggleRadarPlay());
-      if (btnPrev) btnPrev.addEventListener('click', () => stepRadar(-1));
-      if (btnNext) btnNext.addEventListener('click', () => stepRadar(1));
-
-      // Realtime Clock Updater
-      function updateClock() {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-        document.getElementById('currentDateTime').textContent = `${timeStr} - ${dateStr}`;
-      }
-      setInterval(updateClock, 60000);
-      updateClock();
     }
   </script>
 </body>
