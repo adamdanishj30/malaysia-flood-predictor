@@ -8,6 +8,9 @@
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
+  <!-- Three.js for 3D Earth Globe Model -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
   <!-- Leaflet for Malaysian Map integration -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -192,37 +195,25 @@
             </div>
           </div>
 
-          <!-- Circular Globe / Radar Disc matching screenshot -->
-          <div id="btnGlobeDisc" class="w-40 h-40 mx-auto rounded-full relative overflow-hidden bg-gradient-to-b from-slate-900 via-[#0d1627] to-amber-950/40 border border-white/10 shadow-[inset_0_0_30px_rgba(245,158,11,0.28),0_15px_30px_rgba(0,0,0,0.6)] cursor-pointer group transition hover:scale-105" title="Click to view Interactive Malaysian Map & Doppler Radar">
+          <!-- 3D Interactive WebGL Globe Focused on Malaysia -->
+          <div id="globeContainer" class="w-44 h-44 mx-auto rounded-full relative overflow-hidden bg-gradient-to-b from-slate-950 via-[#0c1424] to-[#140e06] border border-white/15 shadow-[0_20px_45px_rgba(0,0,0,0.85),inset_0_0_30px_rgba(245,158,11,0.25)] cursor-grab active:cursor-grabbing group transition duration-300 hover:scale-[1.03]">
             
-            <!-- Stylized Global Graticules & Continents -->
-            <svg class="w-full h-full p-2.5 opacity-55" viewBox="0 0 100 100" fill="none" stroke="currentColor">
-              <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2 3" />
-              <circle cx="50" cy="50" r="28" stroke="rgba(255,255,255,0.12)" />
-              <ellipse cx="50" cy="50" rx="44" ry="18" stroke="rgba(255,255,255,0.08)" />
-              <line x1="50" y1="6" x2="50" y2="94" stroke="rgba(255,255,255,0.06)" />
-              <line x1="6" y1="50" x2="94" y2="50" stroke="rgba(255,255,255,0.06)" />
-            </svg>
+            <!-- Three.js Canvas Mount -->
+            <canvas id="globeCanvas" class="w-full h-full block"></canvas>
+            
+            <!-- Amber Sunset Rim Glow Overlay matching Dribbble lighting -->
+            <div class="absolute bottom-0 inset-x-0 h-16 bg-gradient-to-t from-amber-500/40 via-amber-600/10 to-transparent pointer-events-none rounded-b-full"></div>
 
-            <!-- Active Glowing Hotspot Pin (Malaysia / Klang Valley) -->
-            <div class="absolute top-[48%] left-[48%] -translate-x-1/2 -translate-y-1/2">
-              <span class="relative flex h-3.5 w-3.5">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-cyan-500 border-2 border-white shadow-[0_0_10px_#38bdf8]"></span>
-              </span>
+            <!-- Floating 3D Hotspot Hover Tooltip -->
+            <div id="globeTooltip" class="hidden absolute top-2 left-1/2 -translate-x-1/2 bg-slate-900/95 text-white border border-cyan-400/50 text-[10px] font-semibold px-2.5 py-0.5 rounded-full pointer-events-none shadow-2xl z-30 whitespace-nowrap backdrop-blur-md">
+              <span id="globeTooltipText">Shah Alam</span>
             </div>
 
-            <!-- Surrounding Hotspot Beacons -->
-            <div class="absolute top-[32%] left-[64%]"><span class="w-2 h-2 rounded-full bg-amber-400 block shadow-[0_0_6px_#f59e0b]"></span></div>
-            <div class="absolute top-[62%] left-[34%]"><span class="w-2 h-2 rounded-full bg-amber-400 block shadow-[0_0_6px_#f59e0b]"></span></div>
-            <div class="absolute top-[72%] left-[68%]"><span class="w-2 h-2 rounded-full bg-emerald-400 block shadow-[0_0_6px_#10b981]"></span></div>
-
-            <!-- Warm Amber Sunset Glow at bottom of the disc -->
-            <div class="absolute bottom-0 inset-x-0 h-16 bg-gradient-to-t from-amber-600/40 via-amber-500/15 to-transparent pointer-events-none"></div>
-
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition bg-black/50 backdrop-blur-[2px]">
-              <span class="text-[10px] font-semibold text-white px-2.5 py-1 rounded-full bg-blue-600 shadow-md">Open Map</span>
+            <!-- Hover hint / Expand to full map -->
+            <div class="absolute inset-x-0 bottom-2 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300 pointer-events-none z-20">
+              <span class="text-[9px] font-semibold text-slate-300 px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-sm border border-white/10 shadow">
+                Drag 3D • Double-click Map
+              </span>
             </div>
           </div>
 
@@ -592,6 +583,22 @@
     let satelliteCloudLayer = null;
     let isCloudVisible = false;
 
+    // 3D Globe State Variables
+    let globeRenderer = null;
+    let globeScene = null;
+    let globeCamera = null;
+    let globeMesh = null;
+    let globeGroup = null;
+    let hotspotMeshes = [];
+    let pulsingRings = [];
+    let globeRaycaster = null;
+    let globePointer = null;
+    let isGlobeDragging = false;
+    let prevPointerPos = { x: 0, y: 0 };
+    // Initial orientation: Center directly on Malaysia (lat 4.0 N, lon 102.5 E)
+    let currentGlobeRot = { x: -0.07, y: 2.92 };
+    let targetGlobeRot = { x: -0.07, y: 2.92 };
+
     // Hotspot Presets Cache
     const HOTSPOTS = [
       { name: "Taman Sri Muda, Shah Alam", lat: 3.0234, lon: 101.5381, basin: "Sungai Klang Basin", risk: 92 },
@@ -606,6 +613,7 @@
       fetchLiveTelemetry(currentLat, currentLon, currentCityLabel);
       setupUIEvents();
       setupWeeklyCanvasResize();
+      init3DGlobe();
     });
 
     // 1. Fetch Live Meteorological & Hydrological Telemetry
@@ -613,6 +621,11 @@
       currentLat = lat;
       currentLon = lon;
       currentCityLabel = locationName || "Malaysia";
+
+      // Focus 3D Globe smoothly on coordinates
+      if (typeof focusGlobeOnLocation === "function") {
+        focusGlobeOnLocation(lat, lon);
+      }
 
       // Update Location in UI
       const cleanCity = currentCityLabel.split(',')[0].trim();
@@ -1081,7 +1094,8 @@
       }
 
       document.getElementById('btnOpenMapPill').addEventListener('click', openMap);
-      document.getElementById('btnGlobeDisc').addEventListener('click', openMap);
+      document.getElementById('btnSidebarLocPill')?.addEventListener('click', openMap);
+      document.getElementById('globeContainer')?.addEventListener('dblclick', openMap);
       document.getElementById('btnCloseMapModal').addEventListener('click', () => mapModal.classList.add('hidden'));
 
       function openDetails() {
@@ -1156,6 +1170,457 @@
           } catch (e) {}
         }, 350);
       });
+    }
+
+    // ==================== 8. 3D INTERACTIVE WEBGL GLOBE (THREE.JS) ====================
+    function latLonToVector3D(lat, lon, r) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+      return new THREE.Vector3(
+        -r * Math.cos(theta) * Math.sin(phi),
+        r * Math.cos(phi),
+        r * Math.sin(theta) * Math.sin(phi)
+      );
+    }
+
+    function getGlobeRotationForCoords(lat, lon) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+      const x = -Math.cos(theta) * Math.sin(phi);
+      const y = Math.cos(phi);
+      const z = Math.sin(theta) * Math.sin(phi);
+      return {
+        x: -Math.asin(Math.max(-1, Math.min(1, y))),
+        y: -Math.atan2(x, z)
+      };
+    }
+
+    function focusGlobeOnLocation(lat, lon) {
+      if (!globeGroup) return;
+      const target = getGlobeRotationForCoords(lat, lon);
+      targetGlobeRot.x = Math.max(-1.25, Math.min(1.25, target.x));
+      targetGlobeRot.y = target.y;
+    }
+
+    function createProceduralEarthTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      // 1. Deep Oceanic Gradient
+      const grad = ctx.createLinearGradient(0, 0, 0, 512);
+      grad.addColorStop(0, '#090e1a');
+      grad.addColorStop(0.5, '#0b162c');
+      grad.addColorStop(1, '#080d18');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1024, 512);
+
+      // 2. Graticule Lat/Lon Grid Lines
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= 1024; x += 1024 / 12) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 512);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= 512; y += 512 / 6) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(1024, y);
+        ctx.stroke();
+      }
+
+      // Equator Line
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.25)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 256);
+      ctx.lineTo(1024, 256);
+      ctx.stroke();
+
+      // 3. Continents & Southeast Asia / Malaysia Silhouette
+      ctx.fillStyle = '#1e293b';
+      // Eurasia rough polygon
+      ctx.beginPath();
+      ctx.ellipse(650, 180, 220, 90, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Indian subcontinent
+      ctx.beginPath();
+      ctx.ellipse(710, 230, 60, 45, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Southeast Asia / Indochina
+      ctx.beginPath();
+      ctx.ellipse(790, 240, 50, 40, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Malay Peninsula (Peninsular Malaysia) - Highlighted in Emerald
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(801, 245, 12, 24, [4, 4, 8, 8]);
+      } else {
+        ctx.rect(801, 245, 12, 24);
+      }
+      ctx.fill();
+
+      // Borneo Island (Sarawak & Sabah) - Highlighted in Emerald
+      ctx.fillStyle = '#059669';
+      ctx.beginPath();
+      ctx.ellipse(835, 256, 20, 16, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Sumatra & Java
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.ellipse(800, 275, 45, 16, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(855, 290, 40, 14, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Australia
+      ctx.beginPath();
+      ctx.ellipse(890, 360, 80, 55, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Americas rough outlines
+      ctx.beginPath();
+      ctx.ellipse(250, 180, 90, 70, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(320, 330, 65, 90, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Africa
+      ctx.beginPath();
+      ctx.ellipse(540, 270, 75, 85, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Glowing border ring around Peninsular Malaysia & Borneo
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(818, 254, 32, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      return texture;
+    }
+
+    function add3DHotspotPins(radius) {
+      hotspotMeshes = [];
+      pulsingRings = [];
+
+      // Expanded list of Malaysian flood hotspots (Peninsular + Borneo)
+      const allHotspots = [
+        ...HOTSPOTS,
+        { name: "Kuching, Sarawak", lat: 1.5535, lon: 110.3592, basin: "Sungai Sarawak", risk: 88 },
+        { name: "Kota Kinabalu, Sabah", lat: 5.9804, lon: 116.0735, basin: "Sungai Moyog Basin", risk: 82 },
+        { name: "Batu Pahat, Johor", lat: 1.8548, lon: 102.9325, basin: "Sungai Batu Pahat", risk: 89 },
+        { name: "Kota Bharu, Kelantan", lat: 6.1254, lon: 102.2381, basin: "Sungai Kelantan Basin", risk: 94 }
+      ];
+
+      allHotspots.forEach(spot => {
+        const pos = latLonToVector3D(spot.lat, spot.lon, radius);
+        const normal = pos.clone().normalize();
+
+        // Pin color according to risk
+        let pinColor = 0x38bdf8;
+        if (spot.risk >= 92) pinColor = 0xef4444; // Red
+        else if (spot.risk >= 86) pinColor = 0xf59e0b; // Amber
+
+        // 1. Core Pin Sphere
+        const pinGeom = new THREE.SphereGeometry(1.6, 16, 16);
+        const pinMat = new THREE.MeshBasicMaterial({ color: pinColor });
+        const pinMesh = new THREE.Mesh(pinGeom, pinMat);
+        pinMesh.position.copy(pos.clone().add(normal.clone().multiplyScalar(0.8)));
+
+        // Attach metadata for raycasting & clicks
+        pinMesh.userData = {
+          name: spot.name,
+          lat: spot.lat,
+          lon: spot.lon,
+          risk: spot.risk,
+          basin: spot.basin
+        };
+
+        globeGroup.add(pinMesh);
+        hotspotMeshes.push(pinMesh);
+
+        // 2. Pulsing Ring on Tangent Plane
+        const ringGeom = new THREE.RingGeometry(1.2, 2.8, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: pinColor,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.8
+        });
+        const ringMesh = new THREE.Mesh(ringGeom, ringMat);
+        ringMesh.position.copy(pos.clone().add(normal.clone().multiplyScalar(0.2)));
+        ringMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+        ringMesh.userData = {
+          baseScale: 1.0,
+          phase: Math.random() * Math.PI * 2
+        };
+
+        globeGroup.add(ringMesh);
+        pulsingRings.push(ringMesh);
+      });
+    }
+
+    function setupGlobeInteractivity(container, canvas) {
+      globeRaycaster = new THREE.Raycaster();
+      globeRaycaster.params.Points.threshold = 4;
+      globePointer = new THREE.Vector2();
+
+      const tooltip = document.getElementById('globeTooltip');
+      const tooltipText = document.getElementById('globeTooltipText');
+
+      let isPointerDown = false;
+      let startX = 0;
+      let startY = 0;
+      let hasDragged = false;
+
+      function onPointerDown(e) {
+        isPointerDown = true;
+        hasDragged = false;
+        startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+        startY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+        prevPointerPos.x = startX;
+        prevPointerPos.y = startY;
+      }
+
+      function onPointerMove(e) {
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+
+        if (isPointerDown) {
+          const dx = clientX - prevPointerPos.x;
+          const dy = clientY - prevPointerPos.y;
+          if (Math.abs(clientX - startX) > 4 || Math.abs(clientY - startY) > 4) {
+            hasDragged = true;
+          }
+
+          // Drag rotation
+          targetGlobeRot.y += dx * 0.008;
+          targetGlobeRot.x += dy * 0.008;
+          // Clamp latitude tilt to avoid unnatural upside-down flipping
+          targetGlobeRot.x = Math.max(-1.25, Math.min(1.25, targetGlobeRot.x));
+
+          prevPointerPos.x = clientX;
+          prevPointerPos.y = clientY;
+          if (tooltip) tooltip.classList.add('hidden');
+          return;
+        }
+
+        // Raycasting for Hover Tooltip on desktop
+        if (!e.touches && globeCamera && hotspotMeshes.length) {
+          const rect = canvas.getBoundingClientRect();
+          globePointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+          globePointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+          globeRaycaster.setFromCamera(globePointer, globeCamera);
+          const intersects = globeRaycaster.intersectObjects(hotspotMeshes);
+
+          if (intersects.length > 0) {
+            const hit = intersects[0].object;
+            const data = hit.userData;
+            if (tooltip && tooltipText) {
+              tooltipText.innerHTML = `<span class="text-amber-400 font-bold">${data.risk}% Risk</span> • ${data.name.split(',')[0]}`;
+              tooltip.classList.remove('hidden');
+            }
+            container.style.cursor = 'pointer';
+          } else {
+            if (tooltip) tooltip.classList.add('hidden');
+            container.style.cursor = 'grab';
+          }
+        }
+      }
+
+      function onPointerUp(e) {
+        if (!isPointerDown) return;
+        isPointerDown = false;
+
+        // If it was a click without dragging, check for hotspot pin click
+        if (!hasDragged && globeCamera) {
+          const rect = canvas.getBoundingClientRect();
+          const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX) || startX;
+          const clientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY) || startY;
+
+          globePointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+          globePointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+          globeRaycaster.setFromCamera(globePointer, globeCamera);
+          const intersects = globeRaycaster.intersectObjects(hotspotMeshes);
+
+          if (intersects.length > 0) {
+            const hit = intersects[0].object;
+            const data = hit.userData;
+            fetchLiveTelemetry(data.lat, data.lon, data.name);
+            focusGlobeOnLocation(data.lat, data.lon);
+            if (mapInstance) mapInstance.flyTo([data.lat, data.lon], 12);
+          }
+        }
+      }
+
+      // Mouse events
+      container.addEventListener('mousedown', onPointerDown);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+
+      // Touch events (Mobile friendly)
+      container.addEventListener('touchstart', onPointerDown, { passive: true });
+      window.addEventListener('touchmove', onPointerMove, { passive: true });
+      window.addEventListener('touchend', onPointerUp, { passive: true });
+    }
+
+    function renderGlobeAnimationLoop() {
+      requestAnimationFrame(renderGlobeAnimationLoop);
+      if (!globeRenderer || !globeScene || !globeCamera || !globeGroup) return;
+
+      // 1. Smooth damping towards target rotation with shortest-path wrap around
+      let diffY = targetGlobeRot.y - currentGlobeRot.y;
+      diffY = ((diffY + Math.PI) % (Math.PI * 2) + (Math.PI * 2)) % (Math.PI * 2) - Math.PI;
+      currentGlobeRot.y += diffY * 0.08;
+
+      let diffX = targetGlobeRot.x - currentGlobeRot.x;
+      currentGlobeRot.x += diffX * 0.08;
+
+      globeGroup.rotation.x = currentGlobeRot.x;
+      globeGroup.rotation.y = currentGlobeRot.y;
+
+      // 2. Animate Pulsing Hotspot Rings
+      const time = performance.now() * 0.003;
+      pulsingRings.forEach(ring => {
+        const phase = (time + ring.userData.phase) % 2.5; // loop from 0 to 2.5
+        const scale = 1.0 + phase * 0.6;
+        const opacity = Math.max(0, 0.9 - (phase / 2.5));
+        ring.scale.set(scale, scale, 1);
+        ring.material.opacity = opacity;
+      });
+
+      // 3. Render WebGL Frame
+      globeRenderer.render(globeScene, globeCamera);
+    }
+
+    function init3DGlobe() {
+      const container = document.getElementById('globeContainer');
+      const canvas = document.getElementById('globeCanvas');
+      if (!container || !canvas || typeof THREE === 'undefined') return;
+
+      const width = container.clientWidth || 176;
+      const height = container.clientHeight || 176;
+
+      // WebGL Renderer with High-Performance settings & Crisp Retina scaling
+      globeRenderer = new THREE.WebGLRenderer({
+        canvas: canvas,
+        alpha: true,
+        antialias: true,
+        powerPreference: 'high-performance'
+      });
+      globeRenderer.setSize(width, height, false);
+      globeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+      // Scene & Perspective Camera
+      globeScene = new THREE.Scene();
+      globeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+      globeCamera.position.set(0, 0, 235);
+
+      // Lights: Ambient slate + Sunlight from top-right + Amber Warmth from South
+      const ambientLight = new THREE.AmbientLight(0x475569, 1.1);
+      globeScene.add(ambientLight);
+
+      const sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+      sunLight.position.set(120, 100, 150);
+      globeScene.add(sunLight);
+
+      // Amber rim light at bottom matching Dribbble sunset glow
+      const amberRimLight = new THREE.PointLight(0xf59e0b, 3.5, 300);
+      amberRimLight.position.set(0, -110, 90);
+      globeScene.add(amberRimLight);
+
+      // Globe Group
+      globeGroup = new THREE.Group();
+      globeGroup.rotation.x = currentGlobeRot.x;
+      globeGroup.rotation.y = currentGlobeRot.y;
+      globeScene.add(globeGroup);
+
+      // Earth Sphere Geometry (radius = 85)
+      const radius = 85;
+      const sphereGeom = new THREE.SphereGeometry(radius, 64, 64);
+
+      // Initial Texture: Procedural stylized Earth (instant 0ms render)
+      const proceduralTex = createProceduralEarthTexture();
+      const globeMaterial = new THREE.MeshPhongMaterial({
+        map: proceduralTex,
+        bumpScale: 0.05,
+        shininess: 12,
+        specular: 0x1e293b
+      });
+      globeMesh = new THREE.Mesh(sphereGeom, globeMaterial);
+      globeGroup.add(globeMesh);
+
+      // Subtle Atmospheric Glow Layer (radius = 86.8)
+      const atmosGeom = new THREE.SphereGeometry(radius * 1.022, 32, 32);
+      const atmosMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.09,
+        side: THREE.BackSide
+      });
+      const atmosMesh = new THREE.Mesh(atmosGeom, atmosMat);
+      globeGroup.add(atmosMesh);
+
+      // Asynchronously load real high-res Dark Earth Texture
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.crossOrigin = 'anonymous';
+      textureLoader.load(
+        'https://unpkg.com/three-globe/example/img/earth-dark.jpg',
+        (loadedTex) => {
+          loadedTex.wrapS = THREE.ClampToEdgeWrapping;
+          loadedTex.wrapT = THREE.ClampToEdgeWrapping;
+          globeMesh.material.map = loadedTex;
+          globeMesh.material.needsUpdate = true;
+        },
+        undefined,
+        () => {
+          // Fallback gracefully keeps procedural texture
+        }
+      );
+
+      // Populate 3D Hotspot Pins
+      add3DHotspotPins(radius);
+
+      // User Interactivity: Drag to inspect, Click hotspot, Hover tooltips
+      setupGlobeInteractivity(container, canvas);
+
+      // Handle Resize smoothly
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(entries => {
+          for (let entry of entries) {
+            const w = entry.contentRect.width;
+            const h = entry.contentRect.height;
+            if (w > 0 && h > 0) {
+              globeCamera.aspect = w / h;
+              globeCamera.updateProjectionMatrix();
+              globeRenderer.setSize(w, h, false);
+            }
+          }
+        });
+        ro.observe(container);
+      }
+
+      // Initial orientation: Center precisely on Malaysia
+      focusGlobeOnLocation(currentLat, currentLon);
+
+      // Start WebGL Render Loop
+      renderGlobeAnimationLoop();
     }
   </script>
 </body>
