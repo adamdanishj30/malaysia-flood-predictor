@@ -579,6 +579,9 @@
     let waterHeatLayer = null;
     let isHistHeatActive = true;
     let isWaterHeatActive = false;
+    let currentFloodScore = 85;
+    let currentWaterLevel = 2.4;
+    let currentRiverFlow = 2.1;
 
     // Atmosphere Radar & Satellite
     let radarFrames = [];
@@ -944,6 +947,71 @@
       // Checkpoints
       document.getElementById('modalChkRain').textContent = curRain > 15 ? "Intense (>15 mm/h)" : "Normal (<10 mm/h)";
       document.getElementById('modalChkCloud').textContent = `${Math.round(cloud || 45)}% Overcast`;
+
+      // Update cached telemetry values & refresh live surge heatmap
+      currentFloodScore = score;
+      currentWaterLevel = parseFloat(estWaterLevel);
+      currentRiverFlow = riverFlow;
+      renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow);
+    }
+
+    // Dynamic Live Water Surge Inundation Layer
+    function renderLiveSurgeHeatmap(lat, lon, score, estWaterLevel, riverFlow) {
+      if (waterHeatLayer && mapInstance) {
+        mapInstance.removeLayer(waterHeatLayer);
+        waterHeatLayer = null;
+      }
+      if (typeof L.heatLayer !== "function") return;
+
+      const heatPoints = [];
+      const isCritical = score >= 65;
+      const isWarning = score >= 35;
+      const baseIntensity = isCritical ? 0.95 : (isWarning ? 0.75 : 0.45);
+      const spreadCount = isCritical ? 36 : (isWarning ? 24 : 14);
+      const spreadRadius = isCritical ? 0.045 : (isWarning ? 0.032 : 0.018);
+
+      // Inundation pool around inspection coordinates
+      for (let i = 0; i < spreadCount; i++) {
+        const angle = (i / spreadCount) * Math.PI * 2;
+        const r = Math.pow(Math.random(), 0.65) * spreadRadius;
+        const pLat = lat + (Math.sin(angle) * r);
+        const pLon = lon + (Math.cos(angle) * r * 1.15);
+        const weight = Math.max(baseIntensity * (1 - (r / spreadRadius) * 0.35), 0.2);
+        heatPoints.push([pLat, pLon, weight]);
+      }
+
+      // Channel surge points along river trajectory
+      const channelSteps = 14;
+      for (let s = 1; s <= channelSteps; s++) {
+        const t = s / channelSteps;
+        const offsetLat = Math.sin(t * Math.PI * 1.5) * 0.025;
+        const offsetLon = (t * 0.035) * ((lat > 4) ? -1 : 1);
+        const rWeight = Math.max(baseIntensity * (1 - t * 0.25), 0.25);
+        heatPoints.push([lat + offsetLat, lon + offsetLon, rWeight]);
+        if (isWarning || isCritical) {
+          heatPoints.push([lat + offsetLat + 0.003, lon + offsetLon - 0.003, rWeight * 0.7]);
+          heatPoints.push([lat + offsetLat - 0.003, lon + offsetLon + 0.003, rWeight * 0.7]);
+        }
+      }
+
+      // Pure hydrological surge palette (Deep river azure -> Flowing cyan -> Surface crest)
+      waterHeatLayer = L.heatLayer(heatPoints, {
+        radius: isCritical ? 36 : (isWarning ? 28 : 20),
+        blur: isCritical ? 22 : (isWarning ? 18 : 14),
+        maxZoom: 15,
+        minOpacity: 0.35,
+        gradient: {
+          0.15: 'rgba(2, 132, 199, 0.50)',   // Deep river azure
+          0.40: 'rgba(14, 165, 233, 0.75)',  // Flowing river blue
+          0.65: 'rgba(56, 189, 248, 0.88)',  // Elevated water surge
+          0.85: 'rgba(96, 165, 250, 0.95)',  // Critical inundation zone
+          1.00: 'rgba(224, 242, 254, 1.00)'  // Surface crest / white water
+        }
+      });
+
+      if (isWaterHeatActive && mapInstance) {
+        waterHeatLayer.addTo(mapInstance);
+      }
     }
 
     // 6. Interactive Leaflet Map & Doppler Radar Loader
@@ -957,17 +1025,18 @@
         attributionControl: false
       });
 
-      // Esri Dark Canvas
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 16
-      }).addTo(mapInstance);
-
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 16
+      // High-resolution Dark Basemap (CartoDB Dark Matter - avoids "Zoom Level Not Supported" watermark)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
       }).addTo(mapInstance);
 
       // Historical Heatmap Layer
       loadHistoricalHeatmapLayer();
+
+      // Live Surge Layer
+      renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow);
 
       // Load Doppler Radar
       loadRainViewerRadar();
@@ -1114,6 +1183,95 @@
       document.getElementById('btnSeeDetailsLink').addEventListener('click', openDetails);
       document.getElementById('btnOpenDetailsModal').addEventListener('click', openDetails);
       document.getElementById('btnCloseDetailsModal').addEventListener('click', () => detailsModal.classList.add('hidden'));
+
+      // Flood Layer Switchers (Historical Risk vs Live Surge)
+      const btnHist = document.getElementById('btnModalHistHeat');
+      const btnLive = document.getElementById('btnModalLiveWater');
+
+      function updateFloodLayerDisplay() {
+        if (!btnHist || !btnLive) return;
+        if (isHistHeatActive) {
+          btnHist.className = "px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold transition shadow-sm";
+          btnLive.className = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition";
+          if (historicalHeatLayer && mapInstance && !mapInstance.hasLayer(historicalHeatLayer)) {
+            historicalHeatLayer.addTo(mapInstance);
+          }
+          if (waterHeatLayer && mapInstance && mapInstance.hasLayer(waterHeatLayer)) {
+            mapInstance.removeLayer(waterHeatLayer);
+          }
+        } else {
+          btnHist.className = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition";
+          btnLive.className = "px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold transition shadow-sm";
+          if (historicalHeatLayer && mapInstance && mapInstance.hasLayer(historicalHeatLayer)) {
+            mapInstance.removeLayer(historicalHeatLayer);
+          }
+          if (!waterHeatLayer) {
+            renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow);
+          }
+          if (waterHeatLayer && mapInstance && !mapInstance.hasLayer(waterHeatLayer)) {
+            waterHeatLayer.addTo(mapInstance);
+          }
+        }
+      }
+
+      btnHist?.addEventListener('click', () => {
+        isHistHeatActive = true;
+        isWaterHeatActive = false;
+        updateFloodLayerDisplay();
+      });
+
+      btnLive?.addEventListener('click', () => {
+        isHistHeatActive = false;
+        isWaterHeatActive = true;
+        updateFloodLayerDisplay();
+      });
+
+      // Radar & Satellite Cloud Layer Toggles
+      const btnToggleRadar = document.getElementById('btnModalToggleRadar');
+      const modalRadarControls = document.getElementById('modalRadarControls');
+      btnToggleRadar?.addEventListener('click', () => {
+        isRadarVisible = !isRadarVisible;
+        if (isRadarVisible) {
+          btnToggleRadar.className = "px-2.5 py-1 rounded-lg bg-cyan-600/30 text-cyan-300 border border-cyan-400/40 hover:bg-cyan-600/50 font-semibold transition flex items-center gap-1.5 shadow-sm";
+          if (modalRadarControls) modalRadarControls.classList.remove('hidden');
+          radarTileLayers.forEach(l => {
+            if (mapInstance && !mapInstance.hasLayer(l)) l.addTo(mapInstance);
+          });
+          updateRadarDisplay();
+        } else {
+          btnToggleRadar.className = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5 border border-transparent";
+          if (modalRadarControls) modalRadarControls.classList.add('hidden');
+          if (isRadarPlaying) toggleRadarPlay();
+          radarTileLayers.forEach(l => {
+            if (mapInstance && mapInstance.hasLayer(l)) mapInstance.removeLayer(l);
+          });
+        }
+      });
+
+      const btnToggleCloud = document.getElementById('btnModalToggleCloud');
+      btnToggleCloud?.addEventListener('click', () => {
+        isCloudVisible = !isCloudVisible;
+        if (isCloudVisible) {
+          btnToggleCloud.className = "px-2.5 py-1 rounded-lg bg-sky-600/30 text-sky-300 border border-sky-400/40 hover:bg-sky-600/50 font-semibold transition flex items-center gap-1.5 shadow-sm";
+          if (!satelliteCloudLayer) {
+            const today = new Date().toISOString().split('T')[0];
+            satelliteCloudLayer = L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${today}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
+              maxZoom: 9,
+              opacity: 0.65,
+              zIndex: 350,
+              attribution: 'NASA GIBS'
+            });
+          }
+          if (mapInstance && !mapInstance.hasLayer(satelliteCloudLayer)) {
+            satelliteCloudLayer.addTo(mapInstance);
+          }
+        } else {
+          btnToggleCloud.className = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5 border border-transparent";
+          if (satelliteCloudLayer && mapInstance && mapInstance.hasLayer(satelliteCloudLayer)) {
+            mapInstance.removeLayer(satelliteCloudLayer);
+          }
+        }
+      });
 
       // Radar Playback Buttons
       document.getElementById('btnModalRadarPlay').addEventListener('click', toggleRadarPlay);
