@@ -253,11 +253,15 @@
         
         <!-- Top Navigation Bar matching screenshot -->
         <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <!-- Location & Date on Left -->
-          <div class="flex items-center space-x-2 text-xs sm:text-sm text-slate-200 font-medium">
+          <!-- Location & Date on Left with Calendar Button -->
+          <div class="flex items-center space-x-2 text-xs sm:text-sm text-slate-200 font-medium flex-wrap gap-y-1">
             <i class="fa-solid fa-location-dot text-slate-400 text-xs"></i>
             <span id="topCityName" class="text-white font-semibold">Shah Alam, Selangor, Malaysia</span>
-            <span id="topDateStr" class="text-slate-400 font-light">( Friday, October 9 )</span>
+            <span id="topDateStr" class="text-slate-400 font-light">( Today )</span>
+            <button id="btnOpenCalendarModal" class="ml-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-medium text-amber-300 hover:text-white transition flex items-center gap-1.5 shadow-sm" title="Open Forecast Calendar">
+              <i class="fa-regular fa-calendar-days text-amber-400 text-xs"></i>
+              <span>Calendar</span>
+            </button>
           </div>
 
           <!-- Right Buttons: Search Circle & Action Pill -->
@@ -357,6 +361,15 @@
 
         <!-- ==================== BOTTOM: 7-DAY FORECAST WITH GLOWING SINE WAVE SPLINE ==================== -->
         <div class="relative pt-6 pb-2 w-full">
+          <!-- Forecast Header Bar -->
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2 px-1">
+            <span class="uppercase tracking-wider font-semibold text-[10px] text-slate-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-chart-line text-cyan-400"></i> 7-Day Temperature Trajectory
+            </span>
+            <button id="btnOpenCalendarFromSpline" class="text-[11px] text-amber-400/90 hover:text-amber-300 transition flex items-center gap-1">
+              <i class="fa-regular fa-calendar-days"></i> Monthly Calendar &gt;
+            </button>
+          </div>
           <!-- Day Name Headers Row -->
           <div id="forecastDaysRow" class="grid grid-cols-7 text-center text-xs text-slate-400 font-medium relative z-20">
             <div>Sunday</div>
@@ -600,14 +613,104 @@
     </div>
   </div>
 
+  <!-- ==================== MODAL 3: INTERACTIVE WEATHER & MONSOON CALENDAR ==================== -->
+  <div id="calendarModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 transition-all duration-300">
+    <div class="w-full max-w-2xl max-h-[92vh] glass-surface rounded-[2rem] p-5 sm:p-6 flex flex-col space-y-4 shadow-2xl relative overflow-y-auto">
+      
+      <!-- Calendar Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+            <i class="fa-regular fa-calendar-days text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Meteorological Forecast Calendar</h3>
+            <p id="calendarSubtitle" class="text-xs text-slate-400">7-Day Synoptic Weather & Flood Exposure</p>
+          </div>
+        </div>
+
+        <button id="btnCloseCalendarModal" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Month Navigation Controls -->
+      <div class="flex items-center justify-between bg-black/40 px-4 py-2.5 rounded-xl border border-white/5">
+        <div class="flex items-center space-x-2">
+          <button id="btnCalPrevMonth" class="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs transition">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <h4 id="calendarMonthTitle" class="text-sm font-bold text-white min-w-[140px] text-center">October 2026</h4>
+          <button id="btnCalNextMonth" class="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs transition">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+
+        <button id="btnCalJumpToday" class="px-3 py-1 rounded-lg bg-blue-600/30 text-blue-300 hover:bg-blue-600/50 border border-blue-500/30 text-xs font-semibold transition flex items-center gap-1">
+          <i class="fa-solid fa-clock-rotate-left text-[10px]"></i> Today
+        </button>
+      </div>
+
+      <!-- Days of Week Header -->
+      <div class="grid grid-cols-7 text-center text-xs font-semibold text-slate-400 py-1 border-b border-white/5">
+        <div>Mon</div>
+        <div>Tue</div>
+        <div>Wed</div>
+        <div>Thu</div>
+        <div>Fri</div>
+        <div>Sat</div>
+        <div>Sun</div>
+      </div>
+
+      <!-- Calendar Month Days Grid -->
+      <div id="calendarDaysGrid" class="grid grid-cols-7 gap-1.5 text-xs">
+        <!-- Rendered dynamically by renderCalendar() -->
+      </div>
+
+      <!-- Selected Day Details Card in Modal -->
+      <div id="calendarDayCard" class="bg-black/50 p-4 rounded-2xl border border-white/10 space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <span id="calCardWeatherIcon" class="text-2xl text-amber-400"><i class="fa-solid fa-sun"></i></span>
+            <div>
+              <h5 id="calCardDateTitle" class="font-bold text-white text-sm">Tuesday, October 13, 2026</h5>
+              <p id="calCardCondition" class="text-xs text-slate-400">Stormy with heavy showers</p>
+            </div>
+          </div>
+          <div class="text-right">
+            <span id="calCardTemp" class="text-2xl font-light text-white">28°</span>
+            <div class="text-[10px] text-slate-400">
+              H: <span id="calCardHigh" class="text-white font-medium">32°</span> L: <span id="calCardLow" class="text-slate-300 font-medium">24°</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-1.5 text-slate-300">
+            <i class="fa-solid fa-cloud-showers-heavy text-cyan-400 text-xs"></i>
+            <span>24h Rainfall: <strong id="calCardRain">18 mm</strong></span>
+            <span id="calCardFloodPill" class="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Normal Safe</span>
+          </div>
+          <button id="btnCalApplyDashboard" class="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition text-xs flex items-center gap-1 shadow-sm">
+            <span>Select Day</span>
+            <i class="fa-solid fa-arrow-right text-[10px]"></i>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- ==================== JAVASCRIPT CONTROLLER ==================== -->
   <script>
     // State variables
     let currentLat = 3.0234; // Shah Alam
     let currentLon = 101.5381;
     let currentCityLabel = "Shah Alam, Selangor, Malaysia";
-    let activeDayIndex = 3; // Wednesday (matching Dribbble reference)
+    let activeDayIndex = 0; // Default to Today
     let weeklyForecastData = [];
+    let calDisplayYear = new Date().getFullYear();
+    let calDisplayMonth = new Date().getMonth();
 
     // Map & Layers
     let mapInstance = null;
@@ -703,8 +806,8 @@
 
       // Update date
       const now = new Date();
-      const dateFormatted = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-      document.getElementById('topDateStr').textContent = `( ${dateFormatted} )`;
+      const dateFormatted = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      document.getElementById('topDateStr').textContent = `( Today • ${dateFormatted} )`;
 
       try {
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,precipitation,rain,surface_pressure,wind_speed_10m,weather_code,cloud_cover&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code&timezone=Asia%2FKuala_Lumpur&forecast_days=7`;
@@ -785,53 +888,107 @@
       weeklyForecastData = [];
 
       for (let i = 0; i < Math.min(daily.time.length, 7); i++) {
-        const d = new Date(daily.time[i]);
+        // Parse YYYY-MM-DD reliably into local timezone to prevent 1-day time drift
+        const parts = daily.time[i].split('-');
+        const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
         const dayName = daysOfWeek[d.getDay()];
         const avgTemp = Math.round((daily.temperature_2m_max[i] + daily.temperature_2m_min[i]) / 2);
+        
         weeklyForecastData.push({
-          day: dayName,
+          index: i,
+          day: i === 0 ? 'Today' : dayName,
+          fullDay: dayName,
           dateStr: daily.time[i],
+          dateObj: d,
           temp: avgTemp,
           max: Math.round(daily.temperature_2m_max[i]),
           min: Math.round(daily.temperature_2m_min[i]),
-          code: daily.weather_code[i]
+          code: daily.weather_code[i],
+          rainSum: daily.precipitation_sum ? daily.precipitation_sum[i] : 0
         });
       }
 
+      // Default active index to 0 (Today!)
+      activeDayIndex = 0;
+      updateForecastDisplay();
+      if (typeof renderCalendar === "function") {
+        renderCalendar(calDisplayYear, calDisplayMonth);
+      }
+    }
+
+    function selectForecastDay(idx) {
+      if (!weeklyForecastData.length || idx < 0 || idx >= weeklyForecastData.length) return;
+      activeDayIndex = idx;
+      const item = weeklyForecastData[idx];
+
+      // Update Hero Section for selected day
+      const heroTemp = document.getElementById('heroTempNumber');
+      const heroHigh = document.getElementById('heroHighTemp');
+      const heroLow = document.getElementById('heroLowTemp');
+      const topDate = document.getElementById('topDateStr');
+
+      if (heroTemp) heroTemp.textContent = `${item.temp}°`;
+      if (heroHigh) heroHigh.textContent = `${item.max}°`;
+      if (heroLow) heroLow.textContent = `${item.min}°`;
+
+      // Update Date Header
+      if (topDate && item.dateObj) {
+        const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+        const formatted = item.dateObj.toLocaleDateString('en-US', opts);
+        topDate.textContent = `( ${idx === 0 ? 'Today • ' : ''}${formatted} )`;
+      }
+
+      // Update Editorial Headline
+      updateEditorialHeadline(item.code, item.rainSum || 0, 50);
+
+      // Re-render spline wave & day row highlighting
+      updateForecastDisplay();
+
+      // Update Calendar selection card & re-highlight calendar day
+      if (typeof updateCalendarSelectionCard === "function") {
+        updateCalendarSelectionCard(item);
+      }
+      if (typeof renderCalendar === "function") {
+        renderCalendar(calDisplayYear, calDisplayMonth);
+      }
+    }
+
+    function updateForecastDisplay() {
       // Render Day Headers Row
       const daysContainer = document.getElementById('forecastDaysRow');
-      daysContainer.innerHTML = '';
-      weeklyForecastData.forEach((item, idx) => {
-        const dDiv = document.createElement('div');
-        dDiv.className = `cursor-pointer transition hover:text-white ${idx === activeDayIndex ? 'text-white font-semibold' : 'text-slate-400 font-light'}`;
-        dDiv.textContent = item.day;
-        dDiv.addEventListener('click', () => {
-          activeDayIndex = idx;
-          renderWeeklyWaveSpline();
+      if (daysContainer) {
+        daysContainer.innerHTML = '';
+        weeklyForecastData.forEach((item, idx) => {
+          const dDiv = document.createElement('div');
+          dDiv.className = `cursor-pointer transition hover:text-white ${idx === activeDayIndex ? 'text-white font-semibold' : 'text-slate-400 font-light'}`;
+          dDiv.textContent = item.day;
+          dDiv.addEventListener('click', () => {
+            selectForecastDay(idx);
+          });
+          daysContainer.appendChild(dDiv);
         });
-        daysContainer.appendChild(dDiv);
-      });
+      }
 
       // Render Temperatures Row Under the Wave
       const tempsContainer = document.getElementById('forecastTempsRow');
-      tempsContainer.innerHTML = '';
-      weeklyForecastData.forEach((item, idx) => {
-        const tDiv = document.createElement('div');
-        if (idx === activeDayIndex) {
-          tDiv.className = "text-2xl sm:text-3xl font-normal text-white transition-all transform -translate-y-1";
-          tDiv.textContent = `${item.temp}°`;
-        } else {
-          tDiv.className = "text-base sm:text-lg font-light text-slate-400 transition hover:text-slate-200 cursor-pointer";
-          tDiv.textContent = `${item.temp}°`;
-          tDiv.addEventListener('click', () => {
-            activeDayIndex = idx;
-            renderWeeklyWaveSpline();
-          });
-        }
-        tempsContainer.appendChild(tDiv);
-      });
+      if (tempsContainer) {
+        tempsContainer.innerHTML = '';
+        weeklyForecastData.forEach((item, idx) => {
+          const tDiv = document.createElement('div');
+          if (idx === activeDayIndex) {
+            tDiv.className = "text-2xl sm:text-3xl font-normal text-white transition-all transform -translate-y-1";
+            tDiv.textContent = `${item.temp}°`;
+          } else {
+            tDiv.className = "text-base sm:text-lg font-light text-slate-400 transition hover:text-slate-200 cursor-pointer";
+            tDiv.textContent = `${item.temp}°`;
+            tDiv.addEventListener('click', () => {
+              selectForecastDay(idx);
+            });
+          }
+          tempsContainer.appendChild(tDiv);
+        });
+      }
 
-      // Draw the glowing spline wave!
       renderWeeklyWaveSpline();
     }
 
@@ -925,6 +1082,149 @@
       window.addEventListener('resize', () => {
         renderWeeklyWaveSpline();
       });
+    }
+
+    // 4b. Meteorological & Monsoon Forecast Calendar Engine
+    const MONTH_NAMES = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    function getWeatherIconHtml(code) {
+      if (code >= 95) return '<i class="fa-solid fa-cloud-bolt text-amber-400"></i>';
+      if (code >= 61 || code >= 80) return '<i class="fa-solid fa-cloud-showers-heavy text-cyan-400"></i>';
+      if (code >= 51) return '<i class="fa-solid fa-cloud-rain text-blue-300"></i>';
+      if (code >= 1 && code <= 3) return '<i class="fa-solid fa-cloud-sun text-slate-300"></i>';
+      if (code === 0) return '<i class="fa-solid fa-sun text-amber-400"></i>';
+      return '<i class="fa-solid fa-cloud text-slate-400"></i>';
+    }
+
+    function getWeatherConditionText(code, rain) {
+      if (rain > 25 || code >= 95) return "Thunderstorm with torrential rain";
+      if (rain > 10 || (code >= 61 && code <= 65)) return "Heavy Rain & Urban Flood Risk";
+      if (rain > 0 || (code >= 51 && code <= 55)) return "Monsoon Rain Showers";
+      if (code >= 1 && code <= 3) return "Partly Cloudy with sunny intervals";
+      if (code === 0) return "Clear Tropical Skies";
+      return "Overcast Monsoon Skies";
+    }
+
+    function renderCalendar(year, month) {
+      const grid = document.getElementById('calendarDaysGrid');
+      const title = document.getElementById('calendarMonthTitle');
+      if (!grid || !title) return;
+
+      title.textContent = `${MONTH_NAMES[month]} ${year}`;
+      grid.innerHTML = '';
+
+      const firstDayOfMonth = new Date(year, month, 1);
+      const lastDayOfMonth = new Date(year, month + 1, 0);
+      const daysInMonth = lastDayOfMonth.getDate();
+      const startDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // Monday = 0
+
+      const today = new Date();
+      const todayYear = today.getFullYear();
+      const todayMonth = today.getMonth();
+      const todayDate = today.getDate();
+
+      // 1. Previous Month Padding Days
+      const prevMonthLastDay = new Date(year, month, 0).getDate();
+      for (let i = startDayOfWeek - 1; i >= 0; i--) {
+        const cell = document.createElement('div');
+        cell.className = "p-2 rounded-xl text-slate-600 bg-white/[0.02] text-center min-h-[64px] flex flex-col items-center justify-between opacity-35";
+        cell.innerHTML = `<span>${prevMonthLastDay - i}</span>`;
+        grid.appendChild(cell);
+      }
+
+      // 2. Current Month Days
+      for (let day = 1; day <= daysInMonth; day++) {
+        const thisDate = new Date(year, month, day);
+        const thisIso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isToday = (year === todayYear && month === todayMonth && day === todayDate);
+
+        // Find if this date is in the 7-day forecast
+        const forecastMatch = weeklyForecastData.find(item => item.dateStr === thisIso);
+        const isSelected = forecastMatch && (forecastMatch.index === activeDayIndex);
+
+        const cell = document.createElement('div');
+        let cellClass = "p-2 rounded-xl text-center min-h-[68px] flex flex-col items-center justify-between transition relative border ";
+
+        if (isSelected) {
+          cellClass += "bg-blue-600/30 border-blue-400 text-white shadow-lg ring-1 ring-blue-400 ";
+        } else if (isToday) {
+          cellClass += "bg-white/10 border-amber-400/50 text-white ";
+        } else if (forecastMatch) {
+          cellClass += "bg-white/[0.05] border-white/10 text-slate-200 hover:bg-white/15 hover:border-white/25 cursor-pointer ";
+        } else {
+          cellClass += "bg-white/[0.02] border-transparent text-slate-400 ";
+        }
+
+        cell.className = cellClass;
+
+        let content = `<div class="flex items-center justify-between w-full text-[11px]">
+          <span class="font-medium ${isToday ? 'text-amber-400 font-bold' : ''}">${day}</span>
+          ${isToday ? '<span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 font-bold">TODAY</span>' : ''}
+        </div>`;
+
+        if (forecastMatch) {
+          content += `<div class="my-0.5 text-sm">${getWeatherIconHtml(forecastMatch.code)}</div>
+          <div class="text-[10px] font-mono text-slate-300">${forecastMatch.max}°<span class="text-slate-500">/${forecastMatch.min}°</span></div>`;
+          
+          if (forecastMatch.rainSum > 15) {
+            content += `<div class="w-1.5 h-1.5 rounded-full bg-red-400 absolute bottom-1 right-1" title="Heavy Rain Forecast"></div>`;
+          }
+          cell.style.cursor = 'pointer';
+          cell.addEventListener('click', () => {
+            selectForecastDay(forecastMatch.index);
+          });
+        } else {
+          content += `<div class="h-4"></div><div class="text-[9px] text-slate-600">-</div>`;
+        }
+
+        cell.innerHTML = content;
+        grid.appendChild(cell);
+      }
+
+      // Update bottom selected day card in modal
+      const activeItem = weeklyForecastData[activeDayIndex] || weeklyForecastData[0];
+      if (activeItem) {
+        updateCalendarSelectionCard(activeItem);
+      }
+    }
+
+    function updateCalendarSelectionCard(item) {
+      if (!item) return;
+      const cardTitle = document.getElementById('calCardDateTitle');
+      const cardCond = document.getElementById('calCardCondition');
+      const cardTemp = document.getElementById('calCardTemp');
+      const cardHigh = document.getElementById('calCardHigh');
+      const cardLow = document.getElementById('calCardLow');
+      const cardRain = document.getElementById('calCardRain');
+      const cardIcon = document.getElementById('calCardWeatherIcon');
+      const cardFloodPill = document.getElementById('calCardFloodPill');
+
+      if (cardTitle && item.dateObj) {
+        const opts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+        cardTitle.textContent = `${item.index === 0 ? 'Today • ' : ''}${item.dateObj.toLocaleDateString('en-US', opts)}`;
+      }
+      if (cardCond) cardCond.textContent = getWeatherConditionText(item.code, item.rainSum || 0);
+      if (cardTemp) cardTemp.textContent = `${item.temp}°`;
+      if (cardHigh) cardHigh.textContent = `${item.max}°`;
+      if (cardLow) cardLow.textContent = `${item.min}°`;
+      if (cardRain) cardRain.textContent = `${Math.round(item.rainSum || 0)} mm`;
+      if (cardIcon) cardIcon.innerHTML = getWeatherIconHtml(item.code);
+
+      if (cardFloodPill) {
+        if (item.rainSum > 50) {
+          cardFloodPill.className = "ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/30";
+          cardFloodPill.textContent = "High Surge Risk";
+        } else if (item.rainSum > 20) {
+          cardFloodPill.className = "ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+          cardFloodPill.textContent = "Watch Alert";
+        } else {
+          cardFloodPill.className = "ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+          cardFloodPill.textContent = "Normal Safe";
+        }
+      }
     }
 
     // 5. Multi-Factor Flood Prediction Engine
@@ -1480,6 +1780,51 @@
       document.getElementById('btnSeeDetailsLink').addEventListener('click', openDetails);
       document.getElementById('btnOpenDetailsModal').addEventListener('click', openDetails);
       document.getElementById('btnCloseDetailsModal').addEventListener('click', () => detailsModal.classList.add('hidden'));
+
+      // Calendar Modal Events
+      const calendarModal = document.getElementById('calendarModal');
+      function openCalendar() {
+        if (!calendarModal) return;
+        calendarModal.classList.remove('hidden');
+        renderCalendar(calDisplayYear, calDisplayMonth);
+      }
+      function closeCalendar() {
+        if (calendarModal) calendarModal.classList.add('hidden');
+      }
+
+      document.getElementById('btnOpenCalendarModal')?.addEventListener('click', openCalendar);
+      document.getElementById('btnOpenCalendarFromSpline')?.addEventListener('click', openCalendar);
+      document.getElementById('btnCloseCalendarModal')?.addEventListener('click', closeCalendar);
+
+      document.getElementById('btnCalPrevMonth')?.addEventListener('click', () => {
+        calDisplayMonth--;
+        if (calDisplayMonth < 0) {
+          calDisplayMonth = 11;
+          calDisplayYear--;
+        }
+        renderCalendar(calDisplayYear, calDisplayMonth);
+      });
+
+      document.getElementById('btnCalNextMonth')?.addEventListener('click', () => {
+        calDisplayMonth++;
+        if (calDisplayMonth > 11) {
+          calDisplayMonth = 0;
+          calDisplayYear++;
+        }
+        renderCalendar(calDisplayYear, calDisplayMonth);
+      });
+
+      document.getElementById('btnCalJumpToday')?.addEventListener('click', () => {
+        const now = new Date();
+        calDisplayYear = now.getFullYear();
+        calDisplayMonth = now.getMonth();
+        selectForecastDay(0);
+        renderCalendar(calDisplayYear, calDisplayMonth);
+      });
+
+      document.getElementById('btnCalApplyDashboard')?.addEventListener('click', () => {
+        closeCalendar();
+      });
 
       // Flood Layer Switchers (Historical Risk vs Live Surge)
       const btnHist = document.getElementById('btnModalHistHeat');
