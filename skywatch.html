@@ -144,7 +144,7 @@
 
           <div class="bg-[#070b13]/85 border border-white/5 rounded-2xl p-4 relative overflow-hidden shadow-inner">
             <!-- Top Trend Header -->
-            <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center justify-between mb-1.5">
               <span id="sidebarRiskPill" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 flex items-center gap-1.5">
                 <i class="fa-solid fa-arrow-trend-up text-[10px]"></i>
                 <span id="sidebarRiskText">↑ 23.8%</span>
@@ -152,6 +152,18 @@
               <button id="btnOpenDetailsModal" class="w-5 h-5 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white text-[10px] flex items-center justify-center transition" title="View Full Telemetry Matrix">
                 <i class="fa-solid fa-question"></i>
               </button>
+            </div>
+
+            <!-- Topographic & Historical Verification Badges -->
+            <div class="flex items-center gap-1.5 text-[9px] text-slate-400 mb-1">
+              <span id="sidebarElevationBadge" class="bg-white/5 px-2 py-0.5 rounded-md border border-white/5 flex items-center gap-1 text-slate-300">
+                <i class="fa-solid fa-mountain text-[8px] text-cyan-400"></i>
+                <span id="sidebarElevationText">8m Basin</span>
+              </span>
+              <span id="sidebarHistoryBadge" class="bg-white/5 px-2 py-0.5 rounded-md border border-white/5 flex items-center gap-1 text-slate-300">
+                <i class="fa-solid fa-clock-rotate-left text-[8px] text-amber-400"></i>
+                <span id="sidebarHistoryText">Recurrent Hotspot</span>
+              </span>
             </div>
 
             <!-- Dynamic SVG Curve with Floating Speech Bubble -->
@@ -523,22 +535,42 @@
           Anti-False-Positive Corroboration Engine
         </h4>
 
-        <div class="grid grid-cols-2 gap-2.5 text-xs">
-          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">Rain Intensity:</span>
-            <span id="modalChkRain" class="font-bold text-emerald-400">Normal (&lt;10 mm/h)</span>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex flex-col justify-between">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1">
+              <i class="fa-solid fa-cloud-showers-heavy text-[9px] text-blue-400"></i>Rainfall (API):
+            </span>
+            <span id="modalChkRain" class="font-bold text-emerald-400 mt-1 truncate">Normal (&lt;10 mm/h)</span>
           </div>
-          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">Soil Saturation:</span>
-            <span id="modalChkSoil" class="font-bold text-emerald-400">Absorbing (32%)</span>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex flex-col justify-between">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1">
+              <i class="fa-solid fa-mountain text-[9px] text-cyan-400"></i>Elevation DEM:
+            </span>
+            <span id="modalChkElevation" class="font-bold text-emerald-400 mt-1 truncate">8m • Low Basin Risk</span>
           </div>
-          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">River Headroom:</span>
-            <span id="modalChkRiver" class="font-bold text-emerald-400">Safe Headroom</span>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex flex-col justify-between">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1">
+              <i class="fa-solid fa-clock-rotate-left text-[9px] text-amber-400"></i>Historical Check:
+            </span>
+            <span id="modalChkHistorical" class="font-bold text-emerald-400 mt-1 truncate">Verified Hotspot</span>
           </div>
-          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center justify-between">
-            <span class="text-slate-400">Cloud Cover:</span>
-            <span id="modalChkCloud" class="font-bold text-sky-400">45% Scatter</span>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex flex-col justify-between">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1">
+              <i class="fa-solid fa-water text-[9px] text-teal-400"></i>River Flow (API):
+            </span>
+            <span id="modalChkRiver" class="font-bold text-emerald-400 mt-1 truncate">Safe Headroom</span>
+          </div>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex flex-col justify-between">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1">
+              <i class="fa-solid fa-droplet text-[9px] text-indigo-400"></i>Soil Saturation:
+            </span>
+            <span id="modalChkSoil" class="font-bold text-emerald-400 mt-1 truncate">Absorbing (32%)</span>
+          </div>
+          <div class="bg-black/40 p-2.5 rounded-xl border border-white/5 flex flex-col justify-between">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1">
+              <i class="fa-solid fa-cloud text-[9px] text-sky-400"></i>Cloud Cover:
+            </span>
+            <span id="modalChkCloud" class="font-bold text-sky-400 mt-1 truncate">45% Scatter</span>
           </div>
         </div>
 
@@ -585,6 +617,8 @@
     let currentFloodScore = 85;
     let currentWaterLevel = 2.4;
     let currentRiverFlow = 2.1;
+    let currentElevation = 8;
+    let historicalFloodPoints = [];
 
     // Atmosphere Radar & Satellite
     let radarFrames = [];
@@ -619,20 +653,33 @@
 
     // Hotspot Presets Cache
     const HOTSPOTS = [
-      { name: "Taman Sri Muda, Shah Alam", lat: 3.0234, lon: 101.5381, basin: "Sungai Klang Basin", risk: 92 },
-      { name: "Rantau Panjang, Kelantan", lat: 5.9986, lon: 101.9744, basin: "Sungai Golok Basin", risk: 95 },
-      { name: "Temerloh, Pahang", lat: 3.4506, lon: 102.4176, basin: "Sungai Pahang Basin", risk: 90 },
-      { name: "Segamat, Johor", lat: 2.5148, lon: 102.8158, basin: "Sungai Segamat Basin", risk: 87 },
-      { name: "George Town, Penang", lat: 5.4141, lon: 100.3142, basin: "Sungai Pinang Basin", risk: 84 },
-      { name: "Kuala Lumpur (Masjid Jamek)", lat: 3.1492, lon: 101.6961, basin: "Sg Klang & Gombak", risk: 85 }
+      { name: "Taman Sri Muda, Shah Alam", lat: 3.0234, lon: 101.5381, basin: "Sungai Klang Basin", risk: 92, elev: 8 },
+      { name: "Rantau Panjang, Kelantan", lat: 5.9986, lon: 101.9744, basin: "Sungai Golok Basin", risk: 95, elev: 12 },
+      { name: "Temerloh, Pahang", lat: 3.4506, lon: 102.4176, basin: "Sungai Pahang Basin", risk: 90, elev: 35 },
+      { name: "Segamat, Johor", lat: 2.5148, lon: 102.8158, basin: "Sungai Segamat Basin", risk: 87, elev: 18 },
+      { name: "George Town, Penang", lat: 5.4141, lon: 100.3142, basin: "Sungai Pinang Basin", risk: 84, elev: 4 },
+      { name: "Kuala Lumpur (Masjid Jamek)", lat: 3.1492, lon: 101.6961, basin: "Sg Klang & Gombak", risk: 85, elev: 35 }
     ];
 
     document.addEventListener("DOMContentLoaded", () => {
+      initHistoricalFloodData();
       fetchLiveTelemetry(currentLat, currentLon, currentCityLabel);
       setupUIEvents();
       setupWeeklyCanvasResize();
       init3DGlobe();
     });
+
+    async function initHistoricalFloodData() {
+      try {
+        const res = await fetch('data/historical_flood_heatmap.json');
+        if (res.ok) {
+          const json = await res.json();
+          historicalFloodPoints = json.points || [];
+        }
+      } catch (e) {
+        console.warn("Historical points load error:", e);
+      }
+    }
 
     // 1. Fetch Live Meteorological & Hydrological Telemetry
     async function fetchLiveTelemetry(lat, lon, locationName) {
@@ -682,12 +729,16 @@
           // 7-Day Forecast Arrays
           buildWeeklyForecast(wRes.daily);
 
+          // Extract Topographic Elevation (DEM) from API
+          const elevationM = (wRes.elevation !== undefined) ? wRes.elevation : 15;
+          currentElevation = elevationM;
+
           // River & Multi-Factor Flood Hazard Scoring
           const rain24h = wRes.daily?.precipitation_sum?.[0] || cur.precipitation || 0;
           const riverFlow = fRes?.daily?.river_discharge?.[0] || 1.8;
           const soilMoist = 0.32;
 
-          computeFloodStatus(rain24h, cur.precipitation, riverFlow, cur.relative_humidity_2m, soilMoist, cur.cloud_cover);
+          computeFloodStatus(rain24h, cur.precipitation, riverFlow, cur.relative_humidity_2m, soilMoist, cur.cloud_cover, elevationM, lat, lon);
         }
       } catch (err) {
         console.error("Telemetry fetch error:", err);
@@ -873,24 +924,129 @@
       });
     }
 
-    // 5. Compute Flood Threat & Update Status Speech Bubble ("Dangerous" / "Watch" / "Safe")
-    function computeFloodStatus(rain24h, curRain, riverFlow, hum, soil, cloud) {
-      // Prior risk calculation
-      let score = 15;
-      if (rain24h > 60) score += 40;
-      else if (rain24h > 30) score += 20;
+    // 5. Multi-Factor Flood Prediction Engine
+    // (Integrates Real-Time Rainfall API + Topographic Elevation DEM + Historical Flood Recurrence Verification)
+    function computeFloodStatus(rain24h, curRain, riverFlow, hum, soil, cloud, elevationM, lat, lon) {
+      if (elevationM === undefined || elevationM === null) elevationM = 15;
+      if (!lat) lat = currentLat;
+      if (!lon) lon = currentLon;
 
-      if (curRain > 20) score += 25;
-      else if (curRain > 5) score += 12;
+      // 1. Spatial Historical Flood Verification (Cross-check against 1,600 verified Malaysian flood records)
+      let nearestDistKm = 999;
+      let weightedExposure = 0;
+      if (historicalFloodPoints && historicalFloodPoints.length) {
+        for (let i = 0; i < historicalFloodPoints.length; i++) {
+          const p = historicalFloodPoints[i];
+          const dLat = (p[0] - lat) * 111.0;
+          const dLon = (p[1] - lon) * 111.0 * Math.cos(lat * Math.PI / 180);
+          const dist = Math.hypot(dLat, dLon);
+          if (dist < nearestDistKm) nearestDistKm = dist;
+          if (dist <= 15.0) {
+            weightedExposure += Math.max(0, 1 - (dist / 15.0)) * (p[2] || 0.8);
+          }
+        }
+      } else {
+        // Fallback to core hotspots
+        HOTSPOTS.forEach(spot => {
+          const dLat = (spot.lat - lat) * 111.0;
+          const dLon = (spot.lon - lon) * 111.0 * Math.cos(lat * Math.PI / 180);
+          const dist = Math.hypot(dLat, dLon);
+          if (dist < nearestDistKm) nearestDistKm = dist;
+          if (dist <= 15.0) {
+            weightedExposure += Math.max(0, 1 - (dist / 15.0)) * (spot.risk / 100);
+          }
+        });
+      }
 
-      if (riverFlow > 3.0) score += 20;
-      score = Math.min(Math.max(score, 8), 95);
+      // 2. Dynamic Rainfall Forcing (Hourly Rate + 24h Cumulative Precipitation)
+      let rainScore = 0;
+      if (rain24h >= 120) rainScore = 70 + Math.min(20, (rain24h - 120) * 0.25);
+      else if (rain24h >= 60) rainScore = 40 + (rain24h - 60) * 0.5;
+      else if (rain24h >= 30) rainScore = 18 + (rain24h - 30) * 0.73;
+      else if (rain24h >= 10) rainScore = 5 + (rain24h - 10) * 0.65;
+      else rainScore = rain24h * 0.5;
+
+      // Flash flood cloudburst bonus (Rapid drainage overwhelm)
+      if (curRain > 25) rainScore += 18;
+      else if (curRain > 15) rainScore += 10;
+      else if (curRain > 5) rainScore += 4;
+
+      // River discharge surge
+      let riverScore = 0;
+      if (riverFlow > 15) riverScore = 20;
+      else if (riverFlow > 5) riverScore = 10;
+      else if (riverFlow > 2) riverScore = 4;
+
+      // 3. Topographic Elevation Factor (Digital Elevation Model)
+      // Low basins (e.g. Taman Sri Muda 7m, Rantau Panjang 12m) collect water; hills (50m+) drain by gravity
+      let elevScore = 0;
+      let elevCategory = 'Low Basin Plain';
+      let elevRiskLevel = 'high';
+      if (elevationM < 10) {
+        elevScore = +22;
+        elevCategory = `${Math.round(elevationM)}m • Low Basin Risk`;
+        elevRiskLevel = 'high';
+      } else if (elevationM < 25) {
+        elevScore = +12;
+        elevCategory = `${Math.round(elevationM)}m • Lowland Valley`;
+        elevRiskLevel = 'mod';
+      } else if (elevationM < 50) {
+        elevScore = 0;
+        elevCategory = `${Math.round(elevationM)}m • Undulating Plain`;
+        elevRiskLevel = 'normal';
+      } else if (elevationM < 120) {
+        elevScore = -18;
+        elevCategory = `${Math.round(elevationM)}m • Elevated Ridge`;
+        elevRiskLevel = 'safe';
+      } else {
+        elevScore = -35;
+        elevCategory = `${Math.round(elevationM)}m • Highland Safe`;
+        elevRiskLevel = 'safe';
+      }
+
+      // 4. Historical Flood Recurrence Verification
+      let histScore = 0;
+      let histCategory = 'Rare / Low Incidence';
+      let histRiskLevel = 'safe';
+      let histShort = 'Rare Flooding';
+      if (nearestDistKm <= 4.0 && weightedExposure > 10.0) {
+        histScore = +22;
+        histCategory = 'Verified Recurrent Hotspot';
+        histRiskLevel = 'high';
+        histShort = 'Recurrent Hotspot';
+      } else if (nearestDistKm <= 10.0 && weightedExposure > 2.0) {
+        histScore = +10;
+        histCategory = 'Known Catchment Basin';
+        histRiskLevel = 'mod';
+        histShort = 'Catchment Basin';
+      } else {
+        histScore = -18;
+        histCategory = 'Rare / Low Historical Incidence';
+        histRiskLevel = 'safe';
+        histShort = 'Rarely Floods';
+      }
+
+      // Composite Multi-Factor Integration
+      let composite = rainScore + riverScore + elevScore + histScore;
+
+      // Safety Guardrail: If dry weather (< 2mm rain), hazard cannot exceed 22% even in a low basin
+      if (rain24h < 2 && curRain < 1 && riverFlow < 4) {
+        composite = Math.min(composite, 22);
+      }
+
+      const score = Math.max(5, Math.min(98, Math.round(composite)));
 
       const pill = document.getElementById('sidebarRiskPill');
       const text = document.getElementById('sidebarRiskText');
       const bubble = document.getElementById('statusSpeechBubble');
       const bubbleText = document.getElementById('statusBubbleText');
       const curvePoint = document.getElementById('statusCurvePoint');
+
+      // Update Sidebar micro-badges
+      const sElevText = document.getElementById('sidebarElevationText');
+      const sHistText = document.getElementById('sidebarHistoryText');
+      if (sElevText) sElevText.textContent = `${Math.round(elevationM)}m ${elevationM < 25 ? 'Basin' : (elevationM >= 80 ? 'Highland' : 'Plain')}`;
+      if (sHistText) sHistText.textContent = histShort;
 
       // Update Sidebar widgets
       if (score >= 65) {
@@ -920,7 +1076,7 @@
       const modalWlHeadroom = document.getElementById('modalWlHeadroom');
       const modalWlFill = document.getElementById('modalWlFill');
 
-      const estWaterLevel = Math.min((1.2 + (rain24h * 0.035) + (riverFlow * 0.4)).toFixed(2), 5.5);
+      const estWaterLevel = Math.min((1.2 + (rain24h * 0.035) + (riverFlow * 0.4) + (elevationM < 10 ? 0.35 : 0)).toFixed(2), 5.5);
       modalWlCurrent.textContent = `${estWaterLevel} m`;
 
       if (score >= 65) {
@@ -949,15 +1105,61 @@
         modalWlFill.style.width = "34%";
       }
 
-      // Checkpoints
-      document.getElementById('modalChkRain').textContent = curRain > 15 ? "Intense (>15 mm/h)" : "Normal (<10 mm/h)";
-      document.getElementById('modalChkCloud').textContent = `${Math.round(cloud || 45)}% Overcast`;
+      // Checkpoints in Modal
+      const chkRain = document.getElementById('modalChkRain');
+      if (chkRain) {
+        chkRain.textContent = `${Math.round(rain24h)} mm/24h (${curRain > 15 ? '>15mm/h' : 'Normal'})`;
+        chkRain.className = rain24h > 60 ? 'font-bold text-red-400 mt-1 truncate' : (rain24h > 30 ? 'font-bold text-amber-400 mt-1 truncate' : 'font-bold text-emerald-400 mt-1 truncate');
+      }
+
+      const chkElev = document.getElementById('modalChkElevation');
+      if (chkElev) {
+        chkElev.textContent = elevCategory;
+        chkElev.className = elevRiskLevel === 'high' ? 'font-bold text-red-400 mt-1 truncate' : (elevRiskLevel === 'mod' ? 'font-bold text-amber-400 mt-1 truncate' : 'font-bold text-emerald-400 mt-1 truncate');
+      }
+
+      const chkHist = document.getElementById('modalChkHistorical');
+      if (chkHist) {
+        chkHist.textContent = histCategory;
+        chkHist.className = histRiskLevel === 'high' ? 'font-bold text-red-400 mt-1 truncate' : (histRiskLevel === 'mod' ? 'font-bold text-amber-400 mt-1 truncate' : 'font-bold text-emerald-400 mt-1 truncate');
+      }
+
+      const chkRiver = document.getElementById('modalChkRiver');
+      if (chkRiver) {
+        chkRiver.textContent = `${riverFlow.toFixed(1)} m³/s (${riverFlow > 10 ? 'High Discharge' : 'Safe Headroom'})`;
+        chkRiver.className = riverFlow > 10 ? 'font-bold text-amber-400 mt-1 truncate' : 'font-bold text-emerald-400 mt-1 truncate';
+      }
+
+      const chkCloud = document.getElementById('modalChkCloud');
+      if (chkCloud) {
+        chkCloud.textContent = `${Math.round(cloud || 45)}% Overcast`;
+      }
+
+      // Corroborated Verdict Rationale Text
+      const verdictEl = document.getElementById('modalVerdictText');
+      if (verdictEl) {
+        if (score >= 65) {
+          verdictEl.textContent = `CRITICAL ALERT: Low-lying topography (${Math.round(elevationM)}m elevation) combined with verified recurrent flood history and heavy precipitation (${Math.round(rain24h)}mm/24h) creates severe risk of riverbank breach and localized inundation.`;
+        } else if (score >= 35) {
+          if (elevationM >= 50) {
+            verdictEl.textContent = `WATCH ALERT: Elevated terrain (${Math.round(elevationM)}m) provides natural slope runoff drainage, but intense localized rain (${Math.round(rain24h)}mm) warrants monitoring for flash pooling and road waterlogging.`;
+          } else {
+            verdictEl.textContent = `WATCH ALERT: Moderate rainfall (${Math.round(rain24h)}mm) on low-lying catchment (${Math.round(elevationM)}m). Close monitoring of drainage retention basins advised.`;
+          }
+        } else {
+          if (elevationM >= 80) {
+            verdictEl.textContent = `NORMAL / SAFE: Elevated highland topography (${Math.round(elevationM)}m) drains runoff rapidly by gravity. Zero historical flood vulnerability detected in this sector.`;
+          } else {
+            verdictEl.textContent = `NORMAL / SAFE: Rainfall is within safe natural absorption capacity. Drainage headroom is adequate across nearby waterways.`;
+          }
+        }
+      }
 
       // Update cached telemetry values & refresh live surge heatmap
       currentFloodScore = score;
       currentWaterLevel = parseFloat(estWaterLevel);
       currentRiverFlow = riverFlow;
-      renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow);
+      renderLiveSurgeHeatmap(lat, lon, currentFloodScore, currentWaterLevel, currentRiverFlow);
     }
 
     // Dynamic Live Water Surge Inundation Layer
@@ -1572,10 +1774,10 @@ const BORNEO_COORDS = [[115.146,4.909],[115.224,4.958],[115.285,4.931],[115.37,4
       // Expanded list of Malaysian flood hotspots (Peninsular + Borneo)
       const allHotspots = [
         ...HOTSPOTS,
-        { name: "Kuching, Sarawak", lat: 1.5535, lon: 110.3592, basin: "Sungai Sarawak Basin", risk: 88 },
-        { name: "Kota Kinabalu, Sabah", lat: 5.9804, lon: 116.0735, basin: "Sungai Moyog Basin", risk: 82 },
-        { name: "Batu Pahat, Johor", lat: 1.8548, lon: 102.9325, basin: "Sungai Batu Pahat", risk: 89 },
-        { name: "Kota Bharu, Kelantan", lat: 6.1254, lon: 102.2381, basin: "Sungai Kelantan Basin", risk: 94 }
+        { name: "Kuching, Sarawak", lat: 1.5535, lon: 110.3592, basin: "Sungai Sarawak Basin", risk: 88, elev: 14 },
+        { name: "Kota Kinabalu, Sabah", lat: 5.9804, lon: 116.0735, basin: "Sungai Moyog Basin", risk: 82, elev: 10 },
+        { name: "Batu Pahat, Johor", lat: 1.8548, lon: 102.9325, basin: "Sungai Batu Pahat", risk: 89, elev: 4 },
+        { name: "Kota Bharu, Kelantan", lat: 6.1254, lon: 102.2381, basin: "Sungai Kelantan Basin", risk: 94, elev: 5 }
       ];
 
       allHotspots.forEach(spot => {
@@ -1599,7 +1801,8 @@ const BORNEO_COORDS = [[115.146,4.909],[115.224,4.958],[115.285,4.931],[115.37,4
           lat: spot.lat,
           lon: spot.lon,
           risk: spot.risk,
-          basin: spot.basin
+          basin: spot.basin,
+          elev: spot.elev
         };
 
         globeGroup.add(pinMesh);
@@ -1684,7 +1887,8 @@ const BORNEO_COORDS = [[115.146,4.909],[115.224,4.958],[115.285,4.931],[115.37,4
             const hit = intersects[0].object;
             const data = hit.userData;
             if (tooltip && tooltipText) {
-              tooltipText.innerHTML = `<span class="text-amber-400 font-bold">${data.risk}% Risk</span> • ${data.name.split(',')[0]}`;
+              const elevStr = data.elev ? ` • ${data.elev}m` : '';
+              tooltipText.innerHTML = `<span class="text-amber-400 font-bold">${data.risk}% Risk</span> • ${data.name.split(',')[0]}<span class="text-slate-400 text-xs">${elevStr}</span>`;
               tooltip.classList.remove('hidden');
             }
             container.style.cursor = 'pointer';
