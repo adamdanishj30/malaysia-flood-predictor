@@ -453,6 +453,7 @@
       <div class="flex items-center gap-1.5 flex-wrap text-xs pt-1">
         <span class="text-slate-400 text-[11px]">Hotspots:</span>
         <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="3.0234" data-lon="101.5381" data-name="Taman Sri Muda, Shah Alam">Sri Muda</button>
+        <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="2.9950" data-lon="101.5650" data-name="Kampung Bukit Lanchong, Subang Jaya">Bukit Lanchong</button>
         <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="5.9986" data-lon="101.9744" data-name="Rantau Panjang, Kelantan">Rantau Panjang</button>
         <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="3.4506" data-lon="102.4176" data-name="Temerloh, Pahang">Temerloh</button>
         <button class="quick-hotspot px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition" data-lat="2.5148" data-lon="102.8158" data-name="Segamat, Johor">Segamat</button>
@@ -619,6 +620,7 @@
     let currentRiverFlow = 2.1;
     let currentElevation = 8;
     let historicalFloodPoints = [];
+    let mapInspectionMarker = null;
 
     // Atmosphere Radar & Satellite
     let radarFrames = [];
@@ -654,6 +656,7 @@
     // Hotspot Presets Cache
     const HOTSPOTS = [
       { name: "Taman Sri Muda, Shah Alam", lat: 3.0234, lon: 101.5381, basin: "Sungai Klang Basin", risk: 92, elev: 8 },
+      { name: "Kampung Bukit Lanchong, Subang Jaya", lat: 2.9950, lon: 101.5650, basin: "Sungai Klang Floodplain", risk: 93, elev: 8 },
       { name: "Rantau Panjang, Kelantan", lat: 5.9986, lon: 101.9744, basin: "Sungai Golok Basin", risk: 95, elev: 12 },
       { name: "Temerloh, Pahang", lat: 3.4506, lon: 102.4176, basin: "Sungai Pahang Basin", risk: 90, elev: 35 },
       { name: "Segamat, Johor", lat: 2.5148, lon: 102.8158, basin: "Sungai Segamat Basin", risk: 87, elev: 18 },
@@ -934,6 +937,7 @@
       // 1. Spatial Historical Flood Verification (Cross-check against 1,600 verified Malaysian flood records)
       let nearestDistKm = 999;
       let weightedExposure = 0;
+      const searchRadiusKm = 5.0; // Localized neighborhood radius (avoids false correlation with distant river basins)
       if (historicalFloodPoints && historicalFloodPoints.length) {
         for (let i = 0; i < historicalFloodPoints.length; i++) {
           const p = historicalFloodPoints[i];
@@ -941,8 +945,8 @@
           const dLon = (p[1] - lon) * 111.0 * Math.cos(lat * Math.PI / 180);
           const dist = Math.hypot(dLat, dLon);
           if (dist < nearestDistKm) nearestDistKm = dist;
-          if (dist <= 15.0) {
-            weightedExposure += Math.max(0, 1 - (dist / 15.0)) * (p[2] || 0.8);
+          if (dist <= searchRadiusKm) {
+            weightedExposure += Math.max(0, 1 - (dist / searchRadiusKm)) * (p[2] || 0.8);
           }
         }
       } else {
@@ -952,8 +956,8 @@
           const dLon = (spot.lon - lon) * 111.0 * Math.cos(lat * Math.PI / 180);
           const dist = Math.hypot(dLat, dLon);
           if (dist < nearestDistKm) nearestDistKm = dist;
-          if (dist <= 15.0) {
-            weightedExposure += Math.max(0, 1 - (dist / 15.0)) * (spot.risk / 100);
+          if (dist <= searchRadiusKm) {
+            weightedExposure += Math.max(0, 1 - (dist / searchRadiusKm)) * (spot.risk / 100);
           }
         });
       }
@@ -978,45 +982,53 @@
       else if (riverFlow > 2) riverScore = 4;
 
       // 3. Topographic Elevation Factor (Digital Elevation Model)
-      // Low basins (e.g. Taman Sri Muda 7m, Rantau Panjang 12m) collect water; hills (50m+) drain by gravity
+      // Low basins (e.g. Bukit Lanchong 8m, Taman Sri Muda 7m) collect water; ridges & hills (30m+) drain by gravity
       let elevScore = 0;
       let elevCategory = 'Low Basin Plain';
       let elevRiskLevel = 'high';
       if (elevationM < 10) {
-        elevScore = +22;
+        elevScore = +24;
         elevCategory = `${Math.round(elevationM)}m • Low Basin Risk`;
         elevRiskLevel = 'high';
-      } else if (elevationM < 25) {
+      } else if (elevationM < 22) {
         elevScore = +12;
-        elevCategory = `${Math.round(elevationM)}m • Lowland Valley`;
+        elevCategory = `${Math.round(elevationM)}m • Lowland River Valley`;
         elevRiskLevel = 'mod';
-      } else if (elevationM < 50) {
+      } else if (elevationM < 30) {
         elevScore = 0;
         elevCategory = `${Math.round(elevationM)}m • Undulating Plain`;
         elevRiskLevel = 'normal';
-      } else if (elevationM < 120) {
-        elevScore = -18;
-        elevCategory = `${Math.round(elevationM)}m • Elevated Ridge`;
+      } else if (elevationM < 70) {
+        elevScore = -22;
+        elevCategory = `${Math.round(elevationM)}m • Elevated Ridge / Hill`;
         elevRiskLevel = 'safe';
       } else {
-        elevScore = -35;
-        elevCategory = `${Math.round(elevationM)}m • Highland Safe`;
+        elevScore = -38;
+        elevCategory = `${Math.round(elevationM)}m • Highland Peak Safe`;
         elevRiskLevel = 'safe';
       }
 
       // 4. Historical Flood Recurrence Verification
+      // CRITICAL HYDROLOGICAL PRINCIPLE: Water cannot flow uphill!
+      // Elevated ridges (>= 28m, e.g. Putra Heights 35-107m) are topographically protected from river basin inundation.
       let histScore = 0;
       let histCategory = 'Rare / Low Incidence';
       let histRiskLevel = 'safe';
       let histShort = 'Rare Flooding';
-      if (nearestDistKm <= 4.0 && weightedExposure > 10.0) {
-        histScore = +22;
-        histCategory = 'Verified Recurrent Hotspot';
+
+      if (elevationM >= 28) {
+        histScore = -18;
+        histCategory = 'Topographically Protected (Elevated Ridge)';
+        histRiskLevel = 'safe';
+        histShort = 'Elevated Ridge';
+      } else if (nearestDistKm <= 3.0 && weightedExposure > 3.0) {
+        histScore = +24;
+        histCategory = 'Verified Recurrent Basin Hotspot';
         histRiskLevel = 'high';
         histShort = 'Recurrent Hotspot';
-      } else if (nearestDistKm <= 10.0 && weightedExposure > 2.0) {
+      } else if (nearestDistKm <= 5.0 && weightedExposure > 1.0) {
         histScore = +10;
-        histCategory = 'Known Catchment Basin';
+        histCategory = 'Lowland Catchment Corridor';
         histRiskLevel = 'mod';
         histShort = 'Catchment Basin';
       } else {
@@ -1139,16 +1151,16 @@
       const verdictEl = document.getElementById('modalVerdictText');
       if (verdictEl) {
         if (score >= 65) {
-          verdictEl.textContent = `CRITICAL ALERT: Low-lying topography (${Math.round(elevationM)}m elevation) combined with verified recurrent flood history and heavy precipitation (${Math.round(rain24h)}mm/24h) creates severe risk of riverbank breach and localized inundation.`;
+          verdictEl.textContent = `CRITICAL ALERT: Low-lying basin topography (${Math.round(elevationM)}m elevation) combined with heavy rainfall (${Math.round(rain24h)}mm/24h) and verified historical flood vulnerability creates severe risk of riverbank breach and localized inundation.`;
         } else if (score >= 35) {
-          if (elevationM >= 50) {
-            verdictEl.textContent = `WATCH ALERT: Elevated terrain (${Math.round(elevationM)}m) provides natural slope runoff drainage, but intense localized rain (${Math.round(rain24h)}mm) warrants monitoring for flash pooling and road waterlogging.`;
+          if (elevationM >= 28) {
+            verdictEl.textContent = `WATCH ALERT: Elevated terrain (${Math.round(elevationM)}m) provides natural slope drainage away from homes, but intense localized rain (${Math.round(rain24h)}mm) warrants monitoring for temporary surface road ponding.`;
           } else {
-            verdictEl.textContent = `WATCH ALERT: Moderate rainfall (${Math.round(rain24h)}mm) on low-lying catchment (${Math.round(elevationM)}m). Close monitoring of drainage retention basins advised.`;
+            verdictEl.textContent = `WATCH ALERT: Moderate rainfall (${Math.round(rain24h)}mm) on low-lying river catchment (${Math.round(elevationM)}m). Close monitoring of drainage retention basins advised.`;
           }
         } else {
-          if (elevationM >= 80) {
-            verdictEl.textContent = `NORMAL / SAFE: Elevated highland topography (${Math.round(elevationM)}m) drains runoff rapidly by gravity. Zero historical flood vulnerability detected in this sector.`;
+          if (elevationM >= 28) {
+            verdictEl.textContent = `NORMAL / SAFE: Topographically protected elevated ridge (${Math.round(elevationM)}m). Natural gravity slope sheds stormwater downhill into river corridors. Zero inundation hazard.`;
           } else {
             verdictEl.textContent = `NORMAL / SAFE: Rainfall is within safe natural absorption capacity. Drainage headroom is adequate across nearby waterways.`;
           }
@@ -1159,11 +1171,13 @@
       currentFloodScore = score;
       currentWaterLevel = parseFloat(estWaterLevel);
       currentRiverFlow = riverFlow;
-      renderLiveSurgeHeatmap(lat, lon, currentFloodScore, currentWaterLevel, currentRiverFlow);
+      renderLiveSurgeHeatmap(lat, lon, currentFloodScore, currentWaterLevel, currentRiverFlow, elevationM);
+      updateMapInspectionMarker(lat, lon, currentCityLabel, score, elevationM);
     }
 
     // Dynamic Live Water Surge Inundation Layer
-    function renderLiveSurgeHeatmap(lat, lon, score, estWaterLevel, riverFlow) {
+    function renderLiveSurgeHeatmap(lat, lon, score, estWaterLevel, riverFlow, elevationM) {
+      if (elevationM === undefined || elevationM === null) elevationM = currentElevation || 15;
       if (waterHeatLayer && mapInstance) {
         mapInstance.removeLayer(waterHeatLayer);
         waterHeatLayer = null;
@@ -1173,52 +1187,104 @@
       const heatPoints = [];
       const isCritical = score >= 65;
       const isWarning = score >= 35;
-      const baseIntensity = isCritical ? 0.95 : (isWarning ? 0.75 : 0.45);
-      const spreadCount = isCritical ? 36 : (isWarning ? 24 : 14);
-      const spreadRadius = isCritical ? 0.045 : (isWarning ? 0.032 : 0.018);
+      const isElevatedTerrain = elevationM >= 25; // Elevated terrain (e.g. Putra Heights 35-107m) drains away; no local standing pooling
 
-      // Inundation pool around inspection coordinates
-      for (let i = 0; i < spreadCount; i++) {
-        const angle = (i / spreadCount) * Math.PI * 2;
-        const r = Math.pow(Math.random(), 0.65) * spreadRadius;
-        const pLat = lat + (Math.sin(angle) * r);
-        const pLon = lon + (Math.cos(angle) * r * 1.15);
-        const weight = Math.max(baseIntensity * (1 - (r / spreadRadius) * 0.35), 0.2);
-        heatPoints.push([pLat, pLon, weight]);
-      }
+      // 1. Localized Inundation Pooling: ONLY if low-lying basin (<25m) AND at least warning/danger score
+      if (!isElevatedTerrain && (isWarning || isCritical)) {
+        const baseIntensity = isCritical ? 0.95 : 0.65;
+        const spreadCount = isCritical ? 32 : 18;
+        const spreadRadius = isCritical ? 0.035 : 0.020;
 
-      // Channel surge points along river trajectory
-      const channelSteps = 14;
-      for (let s = 1; s <= channelSteps; s++) {
-        const t = s / channelSteps;
-        const offsetLat = Math.sin(t * Math.PI * 1.5) * 0.025;
-        const offsetLon = (t * 0.035) * ((lat > 4) ? -1 : 1);
-        const rWeight = Math.max(baseIntensity * (1 - t * 0.25), 0.25);
-        heatPoints.push([lat + offsetLat, lon + offsetLon, rWeight]);
-        if (isWarning || isCritical) {
-          heatPoints.push([lat + offsetLat + 0.003, lon + offsetLon - 0.003, rWeight * 0.7]);
-          heatPoints.push([lat + offsetLat - 0.003, lon + offsetLon + 0.003, rWeight * 0.7]);
+        for (let i = 0; i < spreadCount; i++) {
+          const angle = (i / spreadCount) * Math.PI * 2;
+          const r = Math.pow(Math.random(), 0.65) * spreadRadius;
+          const pLat = lat + (Math.sin(angle) * r);
+          const pLon = lon + (Math.cos(angle) * r * 1.15);
+          const weight = Math.max(baseIntensity * (1 - (r / spreadRadius) * 0.4), 0.2);
+          heatPoints.push([pLat, pLon, weight]);
         }
       }
 
+      // 2. River Channel & Lowland Floodplain Surge (e.g. Sungai Klang corridor / Bukit Lanchong basin)
+      if (riverFlow > 3.0 || isWarning || isCritical) {
+        // If user inspects high ground like Putra Heights, water drains toward the western low river basin
+        const baseLat = isElevatedTerrain ? (lat - 0.010) : lat;
+        const baseLon = isElevatedTerrain ? (lon - 0.014) : lon;
+
+        const channelSteps = isCritical ? 16 : 10;
+        const streamIntensity = isCritical ? 0.85 : 0.55;
+
+        for (let s = 1; s <= channelSteps; s++) {
+          const t = s / channelSteps;
+          const offsetLat = Math.sin(t * Math.PI * 1.5) * 0.022;
+          const offsetLon = (t * 0.030) * ((baseLat > 4) ? -1 : 1);
+          const rWeight = Math.max(streamIntensity * (1 - t * 0.25), 0.2);
+          heatPoints.push([baseLat + offsetLat, baseLon + offsetLon, rWeight]);
+        }
+      }
+
+      if (heatPoints.length === 0) return;
+
       // Pure hydrological surge palette (Deep river azure -> Flowing cyan -> Surface crest)
       waterHeatLayer = L.heatLayer(heatPoints, {
-        radius: isCritical ? 36 : (isWarning ? 28 : 20),
-        blur: isCritical ? 22 : (isWarning ? 18 : 14),
+        radius: isCritical ? 34 : (isWarning ? 26 : 18),
+        blur: isCritical ? 22 : (isWarning ? 16 : 12),
         maxZoom: 15,
         minOpacity: 0.35,
         gradient: {
-          0.15: 'rgba(2, 132, 199, 0.50)',   // Deep river azure
-          0.40: 'rgba(14, 165, 233, 0.75)',  // Flowing river blue
-          0.65: 'rgba(56, 189, 248, 0.88)',  // Elevated water surge
-          0.85: 'rgba(96, 165, 250, 0.95)',  // Critical inundation zone
-          1.00: 'rgba(224, 242, 254, 1.00)'  // Surface crest / white water
+          0.15: 'rgba(2, 132, 199, 0.45)',   // Deep river azure
+          0.40: 'rgba(14, 165, 233, 0.70)',  // Flowing river blue
+          0.65: 'rgba(56, 189, 248, 0.85)',  // Elevated water surge
+          0.85: 'rgba(96, 165, 250, 0.92)',  // Critical inundation zone
+          1.00: 'rgba(224, 242, 254, 0.98)'  // Surface crest / white water
         }
       });
 
       if (isWaterHeatActive && mapInstance) {
         waterHeatLayer.addTo(mapInstance);
       }
+    }
+
+    // Inspection Reticle Pin on Interactive Map
+    function updateMapInspectionMarker(lat, lon, label, score, elevationM) {
+      if (!mapInstance) return;
+      if (mapInspectionMarker) {
+        mapInstance.removeLayer(mapInspectionMarker);
+        mapInspectionMarker = null;
+      }
+
+      const isElevated = elevationM >= 28;
+      const statusColor = score >= 65 ? '#ef4444' : (score >= 35 ? '#f59e0b' : '#10b981');
+      const badgeText = score >= 65 ? 'Bahaya' : (score >= 35 ? 'Waspada' : 'Selamat');
+
+      const customIcon = L.divIcon({
+        className: 'custom-inspection-pin',
+        html: `
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-8 h-8 rounded-full animate-ping opacity-35" style="background-color: ${statusColor};"></div>
+            <div class="relative w-4 h-4 rounded-full border-2 border-white shadow-lg" style="background-color: ${statusColor};"></div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+
+      mapInspectionMarker = L.marker([lat, lon], { icon: customIcon }).addTo(mapInstance);
+
+      const cleanName = (label || 'Malaysia').split(',')[0];
+      const popupHtml = `
+        <div class="text-slate-900 font-sans p-1 text-xs">
+          <div class="font-bold text-sm text-slate-800">${cleanName}</div>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="px-1.5 py-0.5 rounded text-[11px] font-bold text-white" style="background-color: ${statusColor}">${badgeText} (${score}%)</span>
+            <span class="text-slate-600 font-medium">${Math.round(elevationM)}m ${isElevated ? 'Highland' : 'Basin'}</span>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1">
+            ${isElevated ? '🛡️ Elevated ridge sheds stormwater naturally.' : '⚠️ Lowland catchment basin.'}
+          </div>
+        </div>
+      `;
+      mapInspectionMarker.bindPopup(popupHtml, { offset: [0, -10] });
     }
 
     // 6. Interactive Leaflet Map & Doppler Radar Loader
@@ -1243,7 +1309,8 @@
       loadHistoricalHeatmapLayer();
 
       // Live Surge Layer
-      renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow);
+      renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow, currentElevation);
+      updateMapInspectionMarker(currentLat, currentLon, currentCityLabel, currentFloodScore, currentElevation);
 
       // Load Doppler Radar
       loadRainViewerRadar();
@@ -1436,7 +1503,7 @@
             mapInstance.removeLayer(historicalHeatLayer);
           }
           if (!waterHeatLayer) {
-            renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow);
+            renderLiveSurgeHeatmap(currentLat, currentLon, currentFloodScore, currentWaterLevel, currentRiverFlow, currentElevation);
           }
           if (waterHeatLayer && mapInstance && !mapInstance.hasLayer(waterHeatLayer)) {
             waterHeatLayer.addTo(mapInstance);

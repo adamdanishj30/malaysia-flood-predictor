@@ -15,6 +15,21 @@
     "notes": "Low-lying retention basin, severe historical flooding in Dec 2021."
   },
   {
+    "id": "my-sgr-02",
+    "name": "Kampung Bukit Lanchong, Subang Jaya",
+    "district": "Petaling",
+    "state": "Selangor",
+    "basin": "Sungai Klang Floodplain",
+    "lat": 2.9950,
+    "lon": 101.5650,
+    "elevation_m": 8,
+    "flood_type": "River Basin Overflow & Lowland Inundation",
+    "historical_risk_score": 93,
+    "critical_rain_1h_mm": 35.0,
+    "critical_rain_24h_mm": 85.0,
+    "notes": "Low-lying alluvial floodplain along Sungai Klang directly opposite Putra Heights; chronic flood risk during monsoonal river swelling."
+  },
+  {
     "id": "my-kl-01",
     "name": "Masjid Jamek & Jalan Tun Perak",
     "district": "Kuala Lumpur",
