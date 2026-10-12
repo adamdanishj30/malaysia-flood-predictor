@@ -588,13 +588,15 @@
 
     // Atmosphere Radar & Satellite
     let radarFrames = [];
-    let radarTileLayers = [];
+    let radarHost = 'https://tilecache.rainviewer.com';
+    let activeRadarLayer = null;
     let radarCurrentIndex = 0;
     let radarInterval = null;
     let isRadarPlaying = false;
     let isRadarVisible = true;
     let satelliteCloudLayer = null;
     let isCloudVisible = false;
+    let previousMapZoom = 11;
 
     // 3D Globe State Variables
     let globeRenderer = null;
@@ -1081,22 +1083,26 @@
       try {
         const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const data = await res.json();
-        if (!data.radar || !data.radar.past) return;
+        if (!data.radar || !data.radar.past || !data.radar.past.length) return;
 
         radarFrames = data.radar.past;
-        const host = data.host || 'https://tilecache.rainviewer.com';
-
-        radarTileLayers = radarFrames.map((frame, idx) => {
-          const layer = L.tileLayer(`${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`, {
-            tileSize: 256,
-            opacity: 0,
-            zIndex: 400 + idx
-          });
-          if (isRadarVisible && mapInstance) layer.addTo(mapInstance);
-          return layer;
-        });
-
+        radarHost = data.host || 'https://tilecache.rainviewer.com';
         radarCurrentIndex = radarFrames.length - 1;
+
+        if (!activeRadarLayer && mapInstance) {
+          const frame = radarFrames[radarCurrentIndex];
+          activeRadarLayer = L.tileLayer(`${radarHost}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+            tileSize: 256,
+            minZoom: 1,
+            maxZoom: 19,
+            maxNativeZoom: 7, // Stretches zoom 7 tiles smoothly, avoids "Zoom Level Not Supported" tiles
+            opacity: isRadarVisible ? 0.78 : 0,
+            zIndex: 400
+          });
+          if (isRadarVisible) activeRadarLayer.addTo(mapInstance);
+        } else if (activeRadarLayer) {
+          updateRadarDisplay();
+        }
         updateRadarDisplay();
       } catch (e) {
         console.warn("Radar load error:", e);
@@ -1104,12 +1110,12 @@
     }
 
     function updateRadarDisplay() {
-      if (!radarFrames.length || !radarTileLayers.length) return;
-      radarTileLayers.forEach((l, i) => {
-        l.setOpacity(i === radarCurrentIndex ? 0.78 : 0);
-      });
-
+      if (!radarFrames.length || !activeRadarLayer) return;
       const frame = radarFrames[radarCurrentIndex];
+      const url = `${radarHost}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+      activeRadarLayer.setUrl(url);
+      if (isRadarVisible) activeRadarLayer.setOpacity(0.78);
+
       const d = new Date(frame.time * 1000);
       const timeStr = d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: true });
       document.getElementById('modalRadarTimeLabel').textContent = timeStr;
@@ -1166,6 +1172,7 @@
 
       function openMap() {
         mapModal.classList.remove('hidden');
+        pauseGlobeRendering();
         setTimeout(() => {
           initModalMap();
           if (mapInstance) {
@@ -1175,10 +1182,28 @@
         }, 150);
       }
 
+      function closeMap() {
+        mapModal.classList.add('hidden');
+        if (isRadarPlaying) toggleRadarPlay();
+        resumeGlobeRendering();
+      }
+
       document.getElementById('btnOpenMapPill').addEventListener('click', openMap);
       document.getElementById('btnSidebarLocPill')?.addEventListener('click', openMap);
       document.getElementById('globeContainer')?.addEventListener('dblclick', openMap);
-      document.getElementById('btnCloseMapModal').addEventListener('click', () => mapModal.classList.add('hidden'));
+      document.getElementById('btnCloseMapModal').addEventListener('click', closeMap);
+
+      // Background tab visibility optimization
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          pauseGlobeRendering();
+          if (isRadarPlaying) toggleRadarPlay();
+        } else {
+          if (mapModal.classList.contains('hidden')) {
+            resumeGlobeRendering();
+          }
+        }
+      });
 
       function openDetails() {
         detailsModal.classList.remove('hidden');
@@ -1237,17 +1262,18 @@
         if (isRadarVisible) {
           btnToggleRadar.className = "px-2.5 py-1 rounded-lg bg-cyan-600/30 text-cyan-300 border border-cyan-400/40 hover:bg-cyan-600/50 font-semibold transition flex items-center gap-1.5 shadow-sm";
           if (modalRadarControls) modalRadarControls.classList.remove('hidden');
-          radarTileLayers.forEach(l => {
-            if (mapInstance && !mapInstance.hasLayer(l)) l.addTo(mapInstance);
-          });
+          if (activeRadarLayer && mapInstance) {
+            if (!mapInstance.hasLayer(activeRadarLayer)) activeRadarLayer.addTo(mapInstance);
+            activeRadarLayer.setOpacity(0.78);
+          }
           updateRadarDisplay();
         } else {
           btnToggleRadar.className = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5 border border-transparent";
           if (modalRadarControls) modalRadarControls.classList.add('hidden');
           if (isRadarPlaying) toggleRadarPlay();
-          radarTileLayers.forEach(l => {
-            if (mapInstance && mapInstance.hasLayer(l)) mapInstance.removeLayer(l);
-          });
+          if (activeRadarLayer && mapInstance && mapInstance.hasLayer(activeRadarLayer)) {
+            mapInstance.removeLayer(activeRadarLayer);
+          }
         }
       });
 
@@ -1256,13 +1282,34 @@
         isCloudVisible = !isCloudVisible;
         if (isCloudVisible) {
           btnToggleCloud.className = "px-2.5 py-1 rounded-lg bg-sky-600/30 text-sky-300 border border-sky-400/40 hover:bg-sky-600/50 font-semibold transition flex items-center gap-1.5 shadow-sm";
+
+          // Force zoom to supported satellite resolution (zoom 7)
+          if (mapInstance) {
+            previousMapZoom = mapInstance.getZoom();
+            if (mapInstance.getZoom() > 7) {
+              mapInstance.setZoom(7, { animate: true });
+            }
+            // Restrict map to max supported zoom while satellite layer is active
+            mapInstance.setMaxZoom(7);
+          }
+
           if (!satelliteCloudLayer) {
-            const today = new Date().toISOString().split('T')[0];
-            satelliteCloudLayer = L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${today}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
-              maxZoom: 9,
+            const d = new Date();
+            if (d.getUTCHours() < 4) d.setUTCDate(d.getUTCDate() - 1);
+            const isoDate = d.toISOString().split('T')[0];
+
+            satelliteCloudLayer = L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${isoDate}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
+              minZoom: 1,
+              maxZoom: 7,
+              maxNativeZoom: 7,
               opacity: 0.65,
               zIndex: 350,
               attribution: 'NASA GIBS'
+            });
+
+            // Cleanly suppress any broken or error tiles
+            satelliteCloudLayer.on('tileerror', (e) => {
+              if (e && e.tile) e.tile.style.display = 'none';
             });
           }
           if (mapInstance && !mapInstance.hasLayer(satelliteCloudLayer)) {
@@ -1272,6 +1319,13 @@
           btnToggleCloud.className = "px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white font-medium transition flex items-center gap-1.5 border border-transparent";
           if (satelliteCloudLayer && mapInstance && mapInstance.hasLayer(satelliteCloudLayer)) {
             mapInstance.removeLayer(satelliteCloudLayer);
+          }
+          // Restore map max zoom to 19 so user can zoom back to street level
+          if (mapInstance) {
+            mapInstance.setMaxZoom(19);
+            if (previousMapZoom > 7) {
+              mapInstance.setZoom(previousMapZoom, { animate: true });
+            }
           }
         }
       });
@@ -1686,8 +1740,15 @@ const BORNEO_COORDS = [[115.146,4.909],[115.224,4.958],[115.285,4.931],[115.37,4
       window.addEventListener('touchend', onPointerUp, { passive: true });
     }
 
+    let isGlobeRendering = true;
+    let globeAnimFrameId = null;
+
     function renderGlobeAnimationLoop() {
-      requestAnimationFrame(renderGlobeAnimationLoop);
+      if (!isGlobeRendering) {
+        globeAnimFrameId = null;
+        return;
+      }
+      globeAnimFrameId = requestAnimationFrame(renderGlobeAnimationLoop);
       if (!globeRenderer || !globeScene || !globeCamera || !globeGroup) return;
 
       // 1. Smooth Zoom Damping towards target
@@ -1717,6 +1778,20 @@ const BORNEO_COORDS = [[115.146,4.909],[115.224,4.958],[115.285,4.931],[115.37,4
 
       // 4. Render WebGL Frame
       globeRenderer.render(globeScene, globeCamera);
+    }
+
+    function pauseGlobeRendering() {
+      isGlobeRendering = false;
+      if (globeAnimFrameId) {
+        cancelAnimationFrame(globeAnimFrameId);
+        globeAnimFrameId = null;
+      }
+    }
+
+    function resumeGlobeRendering() {
+      if (isGlobeRendering) return;
+      isGlobeRendering = true;
+      globeAnimFrameId = requestAnimationFrame(renderGlobeAnimationLoop);
     }
 
     function init3DGlobe() {
