@@ -5,7 +5,8 @@ echo   Updating GitHub repository to your profile...
 echo   Author: adamdanishj30
 echo ========================================================
 echo.
-git push -u origin main --force
+cd /d "%~dp0\.."
+git push origin main
 echo.
 echo ========================================================
 echo Done! Refresh your GitHub repository page.

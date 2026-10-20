@@ -18,7 +18,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, roc_auc_score
 
-HOTSPOTS_FILE = os.path.join(os.path.dirname(__file__), 'data', 'malaysia_hotspots.json')
+HOTSPOTS_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'malaysia_hotspots.json')
+if not os.path.exists(HOTSPOTS_FILE):
+    HOTSPOTS_FILE = os.path.join(os.path.dirname(__file__), 'data', 'malaysia_hotspots.json')
 
 def load_hotspots():
     with open(HOTSPOTS_FILE, 'r', encoding='utf-8') as f:

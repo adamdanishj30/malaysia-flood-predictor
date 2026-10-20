@@ -9,6 +9,7 @@ echo (Keep this window open while using the app)
 echo Press Ctrl+C to stop.
 echo.
 
-start http://localhost:8000/skywatch.html
+cd /d "%~dp0\.."
+start http://localhost:8000
 "C:\Users\adamd\AppData\Local\Programs\Python\Python314\python.exe" -m http.server 8000
 pause

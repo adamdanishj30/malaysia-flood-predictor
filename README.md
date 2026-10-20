@@ -33,13 +33,46 @@ An interactive AI-powered flood risk forecasting and monitoring system for **Mal
 
 ```
 FloodProject/
-├── FLOOD_PREDICTION_MALAYSIA.md   # Complete technical architecture & research document
-├── README.md                      # Quickstart and deployment guide
-├── index.html                     # Responsive disaster monitoring dashboard
-├── app.js                         # Live API client and predictive model engine
-├── train_flood_model.py           # Machine learning training and evaluation script
-└── data/
-    └── malaysia_hotspots.json     # Curated database of Malaysian flood hotspots & thresholds
+├── index.html                           # Active production web dashboard (WaspadaBanjir / SkyWatch)
+├── README.md                            # Quickstart, architecture overview, and deployment guide
+├── wrangler.json                        # Cloudflare Pages static asset configuration
+├── run_local.bat                        # Root shortcut to launch local preview server
+│
+├── data/                                # Production application datasets
+│   ├── historical_flood_heatmap.json    # Live telemetry & historical coordinates (queried by index.html)
+│   ├── malaysia_hotspots.json           # Curated database of Malaysian flood hotspots & thresholds
+│   └── malaysia_boundaries.json         # GeoJSON state and regional border coordinates
+│
+├── scripts/                             # Utility & launcher automation scripts
+│   ├── run_local.bat                    # Starts local Python HTTP server on port 8000
+│   ├── run_skywatch.bat                 # Launches skyWatch preview in default browser
+│   └── push_to_github.bat               # Git synchronization helper
+│
+├── ml/                                  # Machine Learning pipeline, training data & models
+│   ├── process_and_train.py             # Data cleaning, feature engineering & model comparison pipeline
+│   ├── train_flood_model.py             # Open-Meteo historical archive training script
+│   ├── FLOOD_PREDICTION_MALAYSIA.md     # Detailed ML architecture, research notes & formulas
+│   ├── models/                          # Exported trained Scikit-Learn model artifacts (.joblib)
+│   │   ├── flood_classifier.joblib
+│   │   ├── flood_depth_regressor.joblib
+│   │   ├── flood_rf.joblib
+│   │   └── scaler.joblib
+│   └── data/                            # Machine Learning tabular datasets
+│       ├── flood_risk.csv
+│       ├── regression_data.csv
+│       ├── malaysia_floods_cleaned.csv
+│       └── model_weights.json
+│
+└── archive/                             # Preserved legacy prototypes & raw historical archives
+    ├── README.md                        # Documentation of archived components
+    ├── legacy_web/                      # Previous web design iterations (classic dashboard, map view)
+    │   ├── skywatch.html
+    │   ├── dashboard_classic.html
+    │   ├── map_view.html
+    │   └── app.js
+    └── legacy_data/                     # Raw uncleaned historical government archives
+        ├── archive.zip
+        └── malaysia_flood_master.csv
 ```
 
 ---
